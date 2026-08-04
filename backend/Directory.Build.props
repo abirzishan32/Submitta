@@ -1,0 +1,22 @@
+<Project>
+
+  <!-- Settings shared by every project in the solution, so the individual
+       .csproj files stay focused on their own dependencies. -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- Nullability mistakes are bugs waiting to happen; fail the build on them. -->
+    <WarningsAsErrors>nullable</WarningsAsErrors>
+
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <!-- CS1591: "missing XML comment for publicly visible type or member".
+         Doc comments are written where they add meaning, not everywhere. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+</Project>

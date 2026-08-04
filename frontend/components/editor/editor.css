@@ -1,0 +1,255 @@
+/* ---------------------------------------------------------------------------
+   Editor typography and block styling.
+
+   Written as plain CSS against the design tokens rather than as Tailwind
+   utilities: the editor renders arbitrary user content, so the styles must
+   target elements ProseMirror produces, which never carry our class names.
+--------------------------------------------------------------------------- */
+
+.editor-prose {
+  color: var(--foreground);
+  font-size: 1rem;
+  line-height: 1.75;
+}
+
+.editor-prose > * + * {
+  margin-top: 0.85em;
+}
+
+/* --- Headings ------------------------------------------------------------ */
+
+.editor-prose h1,
+.editor-prose h2,
+.editor-prose h3,
+.editor-prose h4,
+.editor-prose h5,
+.editor-prose h6 {
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  text-wrap: balance;
+}
+
+/* Extra space above a heading, none below — a heading belongs to the text
+   that follows it, not the text before. */
+.editor-prose h1 { font-size: 1.875rem; margin-top: 1.6em; }
+.editor-prose h2 { font-size: 1.5rem;   margin-top: 1.5em; }
+.editor-prose h3 { font-size: 1.25rem;  margin-top: 1.4em; }
+.editor-prose h4 { font-size: 1.0625rem; margin-top: 1.3em; }
+.editor-prose h5,
+.editor-prose h6 { font-size: 1rem; margin-top: 1.2em; }
+
+.editor-prose > :first-child { margin-top: 0; }
+
+/* --- Inline -------------------------------------------------------------- */
+
+.editor-prose a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.editor-prose code {
+  background: var(--muted);
+  border-radius: 4px;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.875em;
+  padding: 0.1em 0.35em;
+}
+
+.editor-prose mark {
+  background: color-mix(in oklch, var(--warning), transparent 70%);
+  border-radius: 2px;
+  padding: 0.05em 0.15em;
+}
+
+/* --- Lists --------------------------------------------------------------- */
+
+.editor-prose ul,
+.editor-prose ol {
+  padding-inline-start: 1.5em;
+}
+
+.editor-prose ul { list-style: disc; }
+.editor-prose ol { list-style: decimal; }
+.editor-prose li > * + * { margin-top: 0.4em; }
+.editor-prose li p { margin: 0; }
+
+/* Checklists: the marker is the checkbox, so the list marker is removed. */
+.editor-prose ul[data-type="taskList"] {
+  list-style: none;
+  padding-inline-start: 0;
+}
+
+.editor-prose ul[data-type="taskList"] li {
+  align-items: flex-start;
+  display: flex;
+  gap: 0.6em;
+}
+
+.editor-prose ul[data-type="taskList"] li > label {
+  flex-shrink: 0;
+  margin-top: 0.35em;
+  user-select: none;
+}
+
+.editor-prose ul[data-type="taskList"] input[type="checkbox"] {
+  accent-color: var(--primary);
+  height: 0.95em;
+  width: 0.95em;
+}
+
+/* A completed item is de-emphasised rather than hidden. */
+.editor-prose ul[data-type="taskList"] li[data-checked="true"] > div {
+  color: var(--muted-foreground);
+  text-decoration: line-through;
+}
+
+/* --- Blocks -------------------------------------------------------------- */
+
+.editor-prose blockquote {
+  border-inline-start: 3px solid var(--border);
+  color: var(--muted-foreground);
+  padding-inline-start: 1em;
+}
+
+.editor-prose hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 2em 0;
+}
+
+.editor-callout {
+  background: color-mix(in oklch, var(--muted), transparent 40%);
+  border: 1px solid var(--border);
+  border-inline-start-width: 3px;
+  border-radius: var(--radius-md);
+  padding: 0.9em 1.1em;
+}
+
+.editor-callout > * + * { margin-top: 0.5em; }
+
+/* Tone is an attribute rather than a class, so it survives a JSON round trip. */
+.editor-callout[data-tone="tip"]     { border-inline-start-color: var(--success); }
+.editor-callout[data-tone="warning"] { border-inline-start-color: var(--warning); }
+.editor-callout[data-tone="danger"]  { border-inline-start-color: var(--destructive); }
+.editor-callout[data-tone="note"]    { border-inline-start-color: var(--primary); }
+
+/* --- Code blocks --------------------------------------------------------- */
+
+.editor-prose pre {
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.65;
+  overflow-x: auto;
+  padding: 0.9em 1.1em;
+  tab-size: 2;
+}
+
+.editor-prose pre code {
+  background: none;
+  padding: 0;
+}
+
+/* Highlight.js token colours, mapped to the design tokens so code reads
+   correctly in both themes without a second stylesheet. */
+.hljs-comment,
+.hljs-quote      { color: var(--muted-foreground); font-style: italic; }
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal    { color: var(--chart-5); }
+.hljs-string,
+.hljs-attr       { color: var(--success); }
+.hljs-number,
+.hljs-built_in   { color: var(--warning); }
+.hljs-title,
+.hljs-function,
+.hljs-name       { color: var(--info); }
+.hljs-meta,
+.hljs-type       { color: var(--primary); }
+
+/* --- Tables -------------------------------------------------------------- */
+
+.editor-prose table {
+  border-collapse: collapse;
+  margin: 1em 0;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.editor-prose th,
+.editor-prose td {
+  border: 1px solid var(--border);
+  padding: 0.5em 0.7em;
+  position: relative;
+  vertical-align: top;
+}
+
+.editor-prose th {
+  background: var(--muted);
+  font-weight: 600;
+  text-align: start;
+}
+
+/* The drag handle shown while resizing a column. */
+.editor-prose .column-resize-handle {
+  background: var(--primary);
+  bottom: 0;
+  pointer-events: none;
+  position: absolute;
+  right: -2px;
+  top: 0;
+  width: 3px;
+}
+
+.editor-prose .selectedCell::after {
+  background: color-mix(in oklch, var(--primary), transparent 88%);
+  bottom: 0; content: ""; left: 0; pointer-events: none;
+  position: absolute; right: 0; top: 0;
+}
+
+/* --- Images -------------------------------------------------------------- */
+
+.editor-image {
+  border-radius: var(--radius-md);
+  height: auto;
+  max-width: 100%;
+}
+
+.editor-prose .ProseMirror-selectednode {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* --- Placeholder --------------------------------------------------------- */
+
+.editor-prose p.is-editor-empty:first-child::before {
+  color: var(--muted-foreground);
+  content: attr(data-placeholder);
+  float: inline-start;
+  height: 0;
+  pointer-events: none;
+}
+
+/* --- Focus mode ---------------------------------------------------------- */
+
+/* Dims everything but the block being written in. Opacity only, so nothing
+   reflows as the caret moves between paragraphs. */
+.editor-focus-mode .editor-prose > * {
+  opacity: 0.35;
+  transition: opacity 200ms var(--ease-out-quint, ease);
+}
+
+.editor-focus-mode .editor-prose > *:has(.ProseMirror-trailingBreak),
+.editor-focus-mode .editor-prose > *:focus-within {
+  opacity: 1;
+}
+
+/* --- Read-only ----------------------------------------------------------- */
+
+.editor-prose[contenteditable="false"] {
+  cursor: default;
+}

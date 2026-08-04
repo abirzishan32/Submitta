@@ -1,0 +1,258 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* Class-based dark mode. Tailwind v4 defaults to the prefers-color-scheme
+   media query, so the `.dark` class next-themes toggles must be registered. */
+@custom-variant dark (&:is(.dark *));
+
+/* ---------------------------------------------------------------------------
+   Design tokens
+
+   A restrained institutional palette: deep indigo as the single accent, warm-
+   tinted neutrals so surfaces read as paper rather than as a clinical grey, and
+   four semantic hues that map to states the domain actually has — graded,
+   due soon, overdue, informational.
+
+   All colours are oklch, so lightness steps are perceptually even and a colour
+   keeps its character when lightened for dark mode.
+--------------------------------------------------------------------------- */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans: var(--font-inter), var(--font-bengali), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono-code), ui-monospace, monospace;
+
+  /* Layered rather than glowing: a tight contact shadow plus a soft ambient
+     one, which is how real elevation reads. */
+  --shadow-subtle: 0 1px 2px 0 oklch(0.21 0.02 258 / 0.05);
+  --shadow-raised:
+    0 1px 2px -1px oklch(0.21 0.02 258 / 0.08),
+    0 4px 12px -2px oklch(0.21 0.02 258 / 0.06);
+  --shadow-overlay:
+    0 2px 4px -2px oklch(0.21 0.02 258 / 0.1),
+    0 12px 32px -8px oklch(0.21 0.02 258 / 0.14);
+
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+:root {
+  --radius: 0.625rem;
+
+  --background: oklch(0.994 0.002 250);
+  --foreground: oklch(0.215 0.017 258);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.215 0.017 258);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.215 0.017 258);
+
+  --primary: oklch(0.468 0.132 263);
+  --primary-foreground: oklch(0.99 0.002 250);
+
+  --secondary: oklch(0.967 0.005 255);
+  --secondary-foreground: oklch(0.29 0.02 258);
+
+  --muted: oklch(0.968 0.004 255);
+  --muted-foreground: oklch(0.525 0.018 257);
+
+  --accent: oklch(0.958 0.011 260);
+  --accent-foreground: oklch(0.32 0.045 263);
+
+  --destructive: oklch(0.577 0.208 27);
+  --destructive-foreground: oklch(0.99 0.002 250);
+  --success: oklch(0.582 0.126 156);
+  --success-foreground: oklch(0.99 0.002 250);
+  --warning: oklch(0.706 0.146 70);
+  --warning-foreground: oklch(0.24 0.03 70);
+  --info: oklch(0.575 0.126 240);
+  --info-foreground: oklch(0.99 0.002 250);
+
+  --border: oklch(0.918 0.006 258);
+  --input: oklch(0.918 0.006 258);
+  --ring: oklch(0.468 0.132 263);
+
+  --chart-1: oklch(0.468 0.132 263);
+  --chart-2: oklch(0.582 0.126 156);
+  --chart-3: oklch(0.706 0.146 70);
+  --chart-4: oklch(0.575 0.126 240);
+  --chart-5: oklch(0.612 0.146 320);
+
+  --sidebar: oklch(0.978 0.004 255);
+  --sidebar-foreground: oklch(0.30 0.018 258);
+  --sidebar-primary: oklch(0.468 0.132 263);
+  --sidebar-primary-foreground: oklch(0.99 0.002 250);
+  --sidebar-accent: oklch(0.938 0.012 261);
+  --sidebar-accent-foreground: oklch(0.32 0.045 263);
+  --sidebar-border: oklch(0.912 0.007 258);
+  --sidebar-ring: oklch(0.468 0.132 263);
+}
+
+.dark {
+  --background: oklch(0.181 0.013 262);
+  --foreground: oklch(0.945 0.005 250);
+
+  --card: oklch(0.215 0.015 262);
+  --card-foreground: oklch(0.945 0.005 250);
+  --popover: oklch(0.229 0.016 262);
+  --popover-foreground: oklch(0.945 0.005 250);
+
+  --primary: oklch(0.708 0.132 264);
+  --primary-foreground: oklch(0.181 0.013 262);
+
+  --secondary: oklch(0.268 0.017 262);
+  --secondary-foreground: oklch(0.925 0.006 250);
+
+  --muted: oklch(0.262 0.016 262);
+  --muted-foreground: oklch(0.678 0.017 258);
+
+  --accent: oklch(0.298 0.032 263);
+  --accent-foreground: oklch(0.902 0.024 262);
+
+  --destructive: oklch(0.665 0.184 25);
+  --destructive-foreground: oklch(0.99 0.002 250);
+  --success: oklch(0.688 0.132 157);
+  --success-foreground: oklch(0.17 0.02 157);
+  --warning: oklch(0.788 0.142 74);
+  --warning-foreground: oklch(0.22 0.03 74);
+  --info: oklch(0.688 0.126 240);
+  --info-foreground: oklch(0.17 0.02 240);
+
+  --border: oklch(1 0 0 / 9.5%);
+  --input: oklch(1 0 0 / 13%);
+  --ring: oklch(0.708 0.132 264);
+
+  --chart-1: oklch(0.708 0.132 264);
+  --chart-2: oklch(0.688 0.132 157);
+  --chart-3: oklch(0.788 0.142 74);
+  --chart-4: oklch(0.688 0.126 240);
+  --chart-5: oklch(0.712 0.146 320);
+
+  --sidebar: oklch(0.204 0.014 262);
+  --sidebar-foreground: oklch(0.878 0.007 250);
+  --sidebar-primary: oklch(0.708 0.132 264);
+  --sidebar-primary-foreground: oklch(0.181 0.013 262);
+  --sidebar-accent: oklch(0.288 0.028 263);
+  --sidebar-accent-foreground: oklch(0.918 0.02 262);
+  --sidebar-border: oklch(1 0 0 / 8%);
+  --sidebar-ring: oklch(0.708 0.132 264);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/40;
+  }
+
+  html {
+    @apply font-sans;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* Headings carry slightly tighter tracking, which is what makes a type scale
+     read as designed rather than as browser defaults scaled up. */
+  h1, h2, h3, h4 {
+    @apply font-semibold tracking-tight text-balance;
+  }
+
+  /* Bengali has taller ascenders and descenders than Latin, so it needs more
+     line height to avoid looking cramped in the same components. */
+  :lang(bn) {
+    line-height: 1.75;
+  }
+
+  :lang(bn) h1, :lang(bn) h2, :lang(bn) h3, :lang(bn) h4 {
+    @apply tracking-normal;
+    line-height: 1.4;
+  }
+
+  /* Tabular figures keep numbers from shifting as they change — important for
+     marks, counts and countdowns that update in place. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::selection {
+    @apply bg-primary/15;
+  }
+}
+
+/* Aceternity's Spotlight expects an `animate-spotlight` utility, which in
+   Tailwind v3 came from the JS config. v4 declares it here instead. */
+@keyframes spotlight {
+  0% {
+    opacity: 0;
+    transform: translate(-72%, -62%) scale(0.5);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -40%) scale(1);
+  }
+}
+
+@theme {
+  --animate-spotlight: spotlight 2.4s ease 0.3s 1 forwards;
+}
+
+@layer utilities {
+  /* Honour a user's reduced-motion preference across every animation, including
+     the ones Framer Motion drives. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
