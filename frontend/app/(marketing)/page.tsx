@@ -8,9 +8,7 @@ import { Trust, StackStrip } from "@/components/marketing/trust";
 import { FinalCta } from "@/components/marketing/final-cta";
 
 export const metadata: Metadata = {
-  // `absolute` bypasses the root layout's "%s · Submitta" template, which would
-  // otherwise render "Submitta — … · Submitta".
-  title: { absolute: "Submitta — Coursework without the chasing" },
+  title: { absolute: "Submitta" },
   description:
     "Assignment and submission management for schools and colleges. Teachers publish work to a class and subject, students submit and revise before the deadline, and marks and feedback come back in the same place.",
 };
