@@ -972,22 +972,6 @@ failures are logged rather than raised. If no client is connected, the row is
 still present on the next page load. The client also re-fetches when the tab
 regains focus, closing the gap left by a sleeping machine.
 
-### 14.3 Deduplication
-
-A notification may carry a dedupe key, unique per recipient and enforced by a
-database index. The deadline sweep runs every ten minutes and would otherwise
-remind the same student on every pass; the key makes "already sent" a constraint
-rather than a race the scheduler must win. Marking is deliberately left
-un-keyed, because a re-mark is new information.
-
-### 14.4 Scope
-
-Delivery is **in-process**: a concurrent dictionary of open channels, each
-bounded and dropping its oldest item rather than allowing a stalled client to
-block the publishing request. Running multiple instances behind a load balancer
-would require Redis or a message bus, and only `INotificationStream` would
-change.
-
 ---
 
 ## 15. Database and migrations
@@ -1073,25 +1057,6 @@ policies to the table owner — precisely the connection this application uses.
 using both the anon key and the publishable key return **401 permission
 denied**, while the application continues to read and write normally. Under
 Docker, `0 table(s) still unprotected` is reported at every startup.
-
-### 16.1 When the database user does not own the tables
-
-Enabling RLS for a role that neither owns the tables nor bypasses RLS would
-cause every query to return **zero rows rather than an error** — the application
-would start, authenticate nobody, and display empty lists. The initialiser
-therefore checks first, and if that is the situation it skips the change and
-logs a warning explaining the remedy rather than failing silently.
-
-Because the application creates the schema itself, it owns it, and the check
-passes.
-
-### 16.2 A note on hosted-provider keys
-
-Nothing in this project uses the Supabase client libraries, so the `SUPABASE_*`
-keys are not required to run it. The **service role key bypasses RLS entirely**;
-it must remain server-side and must never appear in frontend code or a
-`NEXT_PUBLIC_*` variable. If it has been exposed, rotate it from the provider's
-dashboard.
 
 ---
 
