@@ -5,9 +5,6 @@ Teachers set assignments against a class and subject, students submit and revise
 their work, and teachers return marks and feedback. Administrators manage users,
 classes, subjects and teaching allocations.
 
-Developed as the technical assignment for the Assistant Software Engineer
-position at OnnoRokom Projukti Limited.
-
 **ASP.NET Core 9 · PostgreSQL 17 · Next.js 16 · TypeScript · Docker · xUnit**
 
 ---
