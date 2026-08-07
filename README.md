@@ -15,6 +15,7 @@ assignment.
 - [Demo credentials](#demo-credentials)
 - [Accounts and authentication](#accounts-and-authentication)
 - [Main features](#main-features)
+- [Setting an assignment](#setting-an-assignment)
 - [The writing editor and replay](#the-writing-editor-and-replay)
 - [Notifications](#notifications)
 - [Database security](#database-security)
@@ -177,6 +178,8 @@ must never be the reason someone gets an account they should not have.
 
 ### Teacher
 - Create, update and delete assignments for their own classes
+- Write the brief in a rich editor, or attach the question as a PDF
+- Choose how it is marked: points, percentage, pass/fail or a rubric they write
 - Set title, description, deadline and maximum marks
 - Keep work as a draft, or publish it
 - Archive work instead of deleting it once students have submitted
@@ -227,6 +230,89 @@ not on a role name:
 - The last active administrator cannot be deactivated or deleted.
 
 All of the above are covered by tests — see [Running the tests](#running-the-tests).
+
+---
+
+## Setting an assignment
+
+### Writing the brief
+
+The brief is written in the **same block editor students answer in** —
+headings, lists, tables, quotes, callouts, highlighted code, a `/` command
+palette. Students see it rendered by the same component that wrote it, so the
+two cannot drift apart.
+
+Both forms are stored: the rich document for display, and the flattened text
+that lists, search and any older client read. The plain text is never the thing
+that is missing.
+
+### Or attach the question as a PDF
+
+A teacher who already has a question paper can attach it instead of typing —
+or as well. Up to 5 files, 10 MB each.
+
+- **PDF only, checked by reading the file's first bytes.** The declared content
+  type and the extension both come from the caller and neither is evidence of
+  anything; `%PDF-` at the start is the only part the server can trust. A text
+  file renamed `.pdf` and declared as `application/pdf` is refused.
+- **The filename is sanitised** before it is stored — directory parts dropped,
+  control characters removed — because it ends up in a `Content-Disposition`
+  header and a Save-As dialogue.
+- **Who can read it:** the teachers of the offering, an administrator, and
+  students enrolled in the class *once the assignment is published*. A draft's
+  paper is not yet set work. Anyone else gets a 404 rather than a 403, so the
+  response does not confirm that another class's paper exists.
+
+Files are stored as `bytea` in their own table. This project has no object
+storage, and adding one would mean another account and another set of
+credentials before the application runs at all. A question paper is small and
+read rarely, so the trade is worth it — and keeping the bytes in a separate
+table means no assignment query ever touches them. A deployment serving large
+files at volume should move this to object storage and keep only the key.
+
+### How it will be marked
+
+Four schemes, chosen per assignment:
+
+| Type | Total | Marking |
+|---|---|---|
+| **Points** | Whatever the teacher sets | A mark out of that total |
+| **Percentage** | Always 100 | A mark out of 100 |
+| **Pass / fail** | 1 | A decision — two buttons, not a number box |
+| **Rubric** | The sum of its criteria | Each criterion scored separately |
+
+Every type still resolves to one number in `Submission.Marks`, out of the
+assignment's `MaxMarks`. That is deliberate: averages, dashboards and the
+student's own record all read one field, so a new scheme cannot break them.
+What the type changes is the range that number may take, how the teacher
+arrives at it, and how it is worded.
+
+**The total is not the teacher's to choose for three of the four.** A
+percentage out of 50 is not a percentage; a pass is one mark out of one; a
+rubric totals its own criteria. The API resolves the maximum from the type
+rather than trusting the request, so the stored figure can never contradict the
+scheme — and the form replaces the input with what the total *will be* rather
+than leaving it to be contradicted.
+
+### Rubrics
+
+The teacher writes the criteria for that assignment: a name, what earns the
+marks, and what it is worth. Students see the rubric **before they start**, not
+only after marking — a rubric nobody can read in advance is just a mark scheme.
+
+When marking, every criterion must be scored. A partial rubric produces a total
+that looks like a mark but silently omits what was skipped, and the student
+cannot tell "scored zero" from "not looked at". The mark is the sum; the figure
+in the request is ignored, so there is no second source of truth.
+
+Two edits are refused outright, because both would rewrite results already
+given:
+
+- **Changing the grading method** once work has been submitted
+- **Removing a criterion** that has already been marked against
+
+Editing a criterion in place — renaming it, re-weighting it — keeps the marks,
+because criteria carry an id and the row is updated rather than replaced.
 
 ---
 
@@ -997,7 +1083,18 @@ is for; reproducing headings, tables and styling as they appeared at each moment
 would mean re-implementing ProseMirror's transform pipeline in the player. The
 finished document is shown in full alongside the replay.
 
-**The editor has no file, image or video uploads.** There is no object storage
+**Attached question papers live in the database.** Stored as `bytea` rather
+than in object storage, because this project has none and adding one would mean
+another account and another set of credentials before anything runs. Fine for
+question papers; a deployment serving large files at volume should move to
+object storage and keep only the key. The bytes sit in their own table, so no
+assignment query ever loads them.
+
+**Only PDFs can be attached to an assignment.** Verified by reading the file's
+first bytes, so the format is genuinely checked rather than taken on trust —
+but it does mean a teacher with a Word document has to export first.
+
+**The student's answer editor has no file, image or video uploads.** There is no object storage
 in this project, so the editor covers text, structure and code but not media.
 Images can be embedded by URL. Adding uploads means adding a storage service and
 a signed-URL endpoint, not changing the editor.

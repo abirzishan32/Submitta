@@ -29,6 +29,25 @@ public sealed record StudentAssignmentDto(
     DateTimeOffset? SubmittedAt);
 
 /// <summary>
+/// A rubric line as the student sees it: what it is worth, and what they
+/// scored once the work has been marked.
+/// </summary>
+public sealed record StudentRubricCriterionDto(
+    Guid Id,
+    int Order,
+    string Title,
+    string? Description,
+    decimal MaxPoints,
+    decimal? Points,
+    string? Comment);
+
+/// <summary>A file the teacher attached, usually the question paper.</summary>
+public sealed record StudentAttachmentDto(
+    Guid Id,
+    string FileName,
+    long SizeBytes);
+
+/// <summary>
 /// Full assignment detail plus the student's own submission and feedback.
 ///
 /// <c>CanSubmit</c> and <c>CanEdit</c> are computed server-side so the UI never
@@ -40,6 +59,10 @@ public sealed record StudentAssignmentDetailDto(
     Guid Id,
     string Title,
     string Description,
+    string? DescriptionJson,
+    GradingType GradingType,
+    IReadOnlyList<StudentRubricCriterionDto> Rubric,
+    IReadOnlyList<StudentAttachmentDto> Attachments,
     string ClassName,
     string ClassCode,
     string SubjectName,

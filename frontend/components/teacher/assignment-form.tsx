@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { ArrowLeft, Loader2, Save, Send } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ClipboardList, Hash, Loader2, Percent, Save, Send } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -20,10 +20,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { FormField, CheckboxField } from "@/components/common/form-field";
+import { Label } from "@/components/ui/label";
+import { RichText } from "@/components/editor/rich-text";
+import { RubricBuilder, type RubricRow } from "./rubric-builder";
+import { QuestionFiles, type AssignmentFile } from "./question-files";
+import { cn } from "@/lib/utils";
 import { FadeInUp } from "@/components/motion/primitives";
 import { apiClient, ClientApiError } from "@/lib/api/client";
 import { useTranslation } from "@/components/providers/i18n-provider";
-import type { AssignmentDetail, OfferingOption } from "@/lib/api/types";
+import type { AssignmentDetail, GradingType, OfferingOption } from "@/lib/api/types";
 
 /**
  * Create or edit an assignment.
@@ -35,6 +40,27 @@ import type { AssignmentDetail, OfferingOption } from "@/lib/api/types";
  * genuinely the decision at hand. Publishing requires a future deadline, which
  * the API enforces and which is surfaced here before the request is made.
  */
+const GRADING_TYPES: Array<{
+  value: GradingType;
+  label: string;
+  hint: string;
+  icon: typeof Hash;
+}> = [
+  { value: "Points", label: "Points", hint: "A mark out of a total you choose.", icon: Hash },
+  { value: "Percentage", label: "Percentage", hint: "A mark out of 100.", icon: Percent },
+  { value: "PassFail", label: "Pass / fail", hint: "A decision, not a score.", icon: CheckCircle2 },
+  { value: "Rubric", label: "Rubric", hint: "Scored against criteria you write.", icon: ClipboardList },
+];
+
+/** What the total will be, for the schemes that decide it rather than the teacher. */
+function fixedTotalLabel(type: GradingType, rubric: RubricRow[]): string {
+  if (type === "Percentage") return "100 (percentage)";
+  if (type === "PassFail") return "Pass or fail";
+
+  const total = rubric.reduce((sum, row) => sum + (Number(row.maxPoints) || 0), 0);
+  return `${total} (from the rubric)`;
+}
+
 export function AssignmentForm({
   offerings,
   assignment,
@@ -51,9 +77,34 @@ export function AssignmentForm({
   const [formError, setFormError] = useState<string | null>(null);
   const [intent, setIntent] = useState<"draft" | "publish">("draft");
 
+  const [gradingType, setGradingType] = useState<GradingType>(
+    assignment?.gradingType ?? "Points",
+  );
+
+  const [rubric, setRubric] = useState<RubricRow[]>(
+    assignment?.rubric?.map((c) => ({
+      id: c.id,
+      title: c.title,
+      description: c.description ?? "",
+      maxPoints: c.maxPoints,
+    })) ?? [],
+  );
+
+  const [files, setFiles] = useState<AssignmentFile[]>(assignment?.attachments ?? []);
+
+  // Both forms of the brief are kept: the rich document for display, and the
+  // flattened text that lists, search and older clients read.
+  const [brief, setBrief] = useState({
+    json: assignment?.descriptionJson ?? null,
+    text: assignment?.description ?? "",
+  });
+
+  // Marks already awarded are anchored to the scheme they were given under, so
+  // changing it afterwards would make them mean something else.
+  const gradingLocked = isEdit && (assignment?.submissionCount ?? 0) > 0;
+
   const schema = z.object({
     title: z.string().trim().min(1, t.validation.required).max(200),
-    description: z.string().trim().min(1, t.validation.required).max(10_000),
     classSubjectId: z.string().min(1, t.validation.required),
     deadline: z.string().min(1, t.validation.required),
     // Plain number rather than z.coerce: Zod 4 types a coerced input as
@@ -73,7 +124,6 @@ export function AssignmentForm({
     resolver: zodResolver(schema),
     defaultValues: {
       title: assignment?.title ?? "",
-      description: assignment?.description ?? "",
       classSubjectId: assignment?.classSubjectId ?? offerings[0]?.classSubjectId ?? "",
       // datetime-local wants "YYYY-MM-DDTHH:mm" in local time.
       deadline: assignment ? toLocalInput(assignment.deadline) : defaultDeadline(),
@@ -90,15 +140,50 @@ export function AssignmentForm({
 
     const deadline = new Date(values.deadline).toISOString();
 
+    // A brief can be written, attached as a PDF, or both — but an assignment
+    // with neither tells the student nothing.
+    const written = brief.text.trim();
+
+    if (!written && files.length === 0) {
+      setFormError(
+        "Add a brief or attach a question paper — an assignment needs one or the other.",
+      );
+      return;
+    }
+
+    if (gradingType === "Rubric" && rubric.every((r) => !r.title.trim())) {
+      setFormError("A rubric-graded assignment needs at least one criterion.");
+      return;
+    }
+
+    const grading = {
+      gradingType,
+      descriptionJson: brief.json,
+      rubric:
+        gradingType === "Rubric"
+          ? rubric
+              .filter((r) => r.title.trim())
+              .map((r) => ({
+                id: r.id ?? null,
+                title: r.title.trim(),
+                description: r.description.trim() || null,
+                maxPoints: Number(r.maxPoints) || 0,
+              }))
+          : null,
+    };
+
     try {
       if (isEdit && assignment) {
         await apiClient.put(`/api/v1/assignments/${assignment.id}`, {
           title: values.title,
-          description: values.description,
+          // The attached-PDF case still needs a line of text, because lists and
+          // search read this field.
+          description: written || `See the attached question paper.`,
           deadline,
           maxMarks: values.maxMarks,
           allowResubmission: values.allowResubmission,
           allowLateSubmission: values.allowLateSubmission,
+          ...grading,
         });
 
         toast.success(t.assignments.saved);
@@ -106,13 +191,14 @@ export function AssignmentForm({
       } else {
         const created = await apiClient.post<AssignmentDetail>("/api/v1/assignments", {
           title: values.title,
-          description: values.description,
+          description: written || `See the attached question paper.`,
           classSubjectId: values.classSubjectId,
           deadline,
           maxMarks: values.maxMarks,
           allowResubmission: values.allowResubmission,
           allowLateSubmission: values.allowLateSubmission,
           publishImmediately: intent === "publish",
+          ...grading,
         });
 
         toast.success(
@@ -184,19 +270,42 @@ export function AssignmentForm({
               />
             </FormField>
 
-            <FormField
-              id="description"
-              label={t.assignments.description}
-              error={form.formState.errors.description?.message}
-            >
-              <Textarea
-                id="description"
-                rows={8}
-                className="resize-y leading-relaxed"
+            <div className="space-y-2">
+              <div>
+                <Label>{t.assignments.description}</Label>
+                <p className="pt-0.5 text-xs text-muted-foreground text-pretty">
+                  Write the brief here — headings, lists, tables and code all
+                  work. Press <kbd className="rounded border border-border bg-muted px-1 text-[0.6875rem]">/</kbd>{" "}
+                  for commands. Or leave it empty and attach a PDF below.
+                </p>
+              </div>
+
+              <RichText
+                value={brief.json}
+                fallback={assignment?.description}
+                editable
+                minHeight="14rem"
                 placeholder="What should students do, and how will it be marked?"
-                {...form.register("description")}
+                onChange={(json, text) => setBrief({ json, text })}
               />
-            </FormField>
+            </div>
+
+            {/* Only once the assignment exists: a file has to belong to
+                something, so offering this on a blank form would promise
+                what cannot work. */}
+            {isEdit && assignment ? (
+              <QuestionFiles
+                assignmentId={assignment.id}
+                files={files}
+                onChange={setFiles}
+              />
+            ) : (
+              <p className="rounded-lg border border-dashed border-border px-4 py-3 text-xs text-muted-foreground text-pretty">
+                Want to attach the question as a PDF instead? Save this
+                assignment first — a file has to belong to something — then add
+                it from the edit screen.
+              </p>
+            )}
 
             {/* The offering cannot change after creation: existing submissions
                 belong to the class it was set for. */}
@@ -257,22 +366,84 @@ export function AssignmentForm({
                 />
               </FormField>
 
-              <FormField
-                id="maxMarks"
-                label={t.assignments.maxMarks}
-                error={form.formState.errors.maxMarks?.message}
-              >
-                <Input
+              {/* The total is only the teacher's to choose for Points. Every
+                  other scheme fixes it, so the box is replaced by what it
+                  will be rather than left to be contradicted. */}
+              {gradingType === "Points" ? (
+                <FormField
+                  // Keyed so React replaces the field rather than reusing the
+                  // input across branches — a reused node keeps the value the
+                  // other branch put in it.
+                  key="maxMarks-editable"
                   id="maxMarks"
-                  type="number"
-                  min={1}
-                  max={1000}
-                  step="0.5"
-                  className="tabular"
-                  {...form.register("maxMarks", { valueAsNumber: true })}
-                />
-              </FormField>
+                  label={t.assignments.maxMarks}
+                  error={form.formState.errors.maxMarks?.message}
+                >
+                  <Input
+                    id="maxMarks"
+                    type="number"
+                    min={1}
+                    max={1000}
+                    step="0.5"
+                    className="tabular"
+                    {...form.register("maxMarks", { valueAsNumber: true })}
+                  />
+                </FormField>
+              ) : (
+                <FormField key="maxMarks-fixed" id="maxMarksFixed" label={t.assignments.maxMarks}>
+                  <Input
+                    id="maxMarksFixed"
+                    value={fixedTotalLabel(gradingType, rubric)}
+                    disabled
+                    readOnly
+                    className="tabular"
+                  />
+                </FormField>
+              )}
             </div>
+
+            {/* How it is marked. Placed after the total because it decides
+                whether that total is even editable. */}
+            <div className="space-y-2">
+              <div>
+                <Label>Grading</Label>
+                <p className="pt-0.5 text-xs text-muted-foreground text-pretty">
+                  {gradingLocked
+                    ? "Work has already been submitted, so the grading method is now fixed — marks already given would stop meaning what they say."
+                    : "How this work is marked. Students see this before they start."}
+                </p>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                {GRADING_TYPES.map(({ value, label, hint, icon: Icon }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    disabled={gradingLocked}
+                    aria-pressed={gradingType === value}
+                    onClick={() => setGradingType(value)}
+                    className={cn(
+                      "flex flex-col gap-1 rounded-lg border p-3 text-start transition-colors",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+                      "disabled:cursor-not-allowed disabled:opacity-60",
+                      gradingType === value
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:border-input hover:bg-accent/40",
+                    )}
+                  >
+                    <span className="inline-flex items-center gap-1.5 text-sm font-medium">
+                      <Icon className="size-3.5" aria-hidden />
+                      {label}
+                    </span>
+                    <span className="text-xs text-muted-foreground text-pretty">{hint}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {gradingType === "Rubric" ? (
+              <RubricBuilder rows={rubric} onChange={setRubric} />
+            ) : null}
 
             <div className="grid gap-2.5 sm:grid-cols-2">
               <CheckboxField

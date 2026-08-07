@@ -32,6 +32,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<ApplicationSetting> ApplicationSettings => Set<ApplicationSetting>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<SubmissionCriterionScore> SubmissionCriterionScores => Set<SubmissionCriterionScore>();
+    public DbSet<RubricCriterion> RubricCriteria => Set<RubricCriterion>();
+    public DbSet<AssignmentAttachment> AssignmentAttachments => Set<AssignmentAttachment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

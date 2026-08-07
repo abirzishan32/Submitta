@@ -164,6 +164,8 @@ export interface SubjectOption {
 // --- Teacher: assignments ---------------------------------------------------
 
 export interface AssignmentDto {
+  gradingType: GradingType;
+  hasAttachments: boolean;
   id: string;
   title: string;
   classSubjectId: string;
@@ -184,8 +186,33 @@ export interface AssignmentDto {
   createdAt: string;
 }
 
+export type GradingType = "Points" | "Percentage" | "PassFail" | "Rubric";
+
+/** One line of a rubric, with what a submission scored on it when marked. */
+export interface RubricCriterion {
+  id: string;
+  order: number;
+  title: string;
+  description: string | null;
+  maxPoints: number;
+  points?: number | null;
+  comment?: string | null;
+}
+
+export interface AssignmentAttachment {
+  id: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  uploadedAt: string;
+}
+
 export interface AssignmentDetail extends Omit<AssignmentDto, "createdAt"> {
   description: string;
+  descriptionJson: string | null;
+  gradingType: GradingType;
+  rubric: RubricCriterion[];
+  attachments: AssignmentAttachment[];
   createdByTeacherId: string;
   isPastDeadline: boolean;
   createdAt: string;
@@ -222,6 +249,8 @@ export interface FeedbackDto {
 }
 
 export interface SubmissionDetail {
+  gradingType: GradingType;
+  rubric: RubricCriterion[];
   id: string;
   assignmentId: string;
   assignmentTitle: string;
@@ -308,6 +337,10 @@ export interface StudentSubmission {
 }
 
 export interface StudentAssignmentDetail {
+  descriptionJson: string | null;
+  gradingType: GradingType;
+  rubric: RubricCriterion[];
+  attachments: Array<{ id: string; fileName: string; sizeBytes: number }>;
   id: string;
   title: string;
   description: string;

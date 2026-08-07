@@ -253,3 +253,23 @@
 .editor-prose[contenteditable="false"] {
   cursor: default;
 }
+
+/* ---------------------------------------------------------------------------
+   Read-only rendering.
+
+   The same prose styles as the editor, without the chrome: no caret, no
+   minimum height, and no padding of its own so the surrounding card decides
+   the spacing. A brief and the editor that wrote it should look identical.
+   --------------------------------------------------------------------------- */
+.editor-readonly .editor-prose {
+  min-height: 0;
+  caret-color: transparent;
+}
+
+.editor-readonly .ProseMirror {
+  padding: 0;
+}
+
+.editor-readonly .ProseMirror-trailingBreak {
+  display: none;
+}

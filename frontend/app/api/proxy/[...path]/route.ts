@@ -47,15 +47,41 @@ async function handle(
     }
   }
 
+  const contentType = response.headers.get("Content-Type") ?? "application/json";
+
+  // Anything that is not text has to be passed through as bytes. Reading a PDF
+  // with text() decodes it as UTF-8 and silently mangles every byte that is not
+  // valid there, producing a file that downloads but will not open.
+  if (!isTextual(contentType)) {
+    const headers = new Headers({
+      "Content-Type": contentType,
+      "Cache-Control": "no-store",
+    });
+
+    // Carries the filename through to the browser's Save-As dialogue.
+    const disposition = response.headers.get("Content-Disposition");
+    if (disposition) headers.set("Content-Disposition", disposition);
+
+    return new NextResponse(await response.arrayBuffer(), {
+      status: response.status,
+      headers,
+    });
+  }
+
   const payload = await response.text();
 
   return new NextResponse(payload || null, {
     status: response.status,
     headers: {
-      "Content-Type": response.headers.get("Content-Type") ?? "application/json",
+      "Content-Type": contentType,
       "Cache-Control": "no-store",
     },
   });
+}
+
+/** Whether a response body survives being read as a string. */
+function isTextual(contentType: string): boolean {
+  return /^(application\/(json|.*\+json)|text\/)/i.test(contentType);
 }
 
 async function forward(

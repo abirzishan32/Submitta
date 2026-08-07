@@ -690,5 +690,127 @@ BEGIN
     VALUES ('20260804143036_EnableRowLevelSecurity', '9.0.0');
     END IF;
 END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20260804181103_AssignmentAuthoringAndGrading') THEN
+    ALTER TABLE assignments ADD description_json text;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20260804181103_AssignmentAuthoringAndGrading') THEN
+    ALTER TABLE assignments ADD grading_type integer NOT NULL DEFAULT 0;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20260804181103_AssignmentAuthoringAndGrading') THEN
+    CREATE TABLE assignment_attachments (
+        id uuid NOT NULL,
+        assignment_id uuid NOT NULL,
+        file_name character varying(260) NOT NULL,
+        content_type character varying(100) NOT NULL,
+        size_bytes bigint NOT NULL,
+        content bytea NOT NULL,
+        created_at timestamptz NOT NULL,
+        updated_at timestamptz,
+        created_by uuid,
+        modified_by uuid,
+        is_deleted boolean NOT NULL,
+        deleted_at timestamptz,
+        deleted_by uuid,
+        CONSTRAINT pk_assignment_attachments PRIMARY KEY (id),
+        CONSTRAINT ck_assignment_attachments_size_positive CHECK (size_bytes > 0),
+        CONSTRAINT fk_assignment_attachments_assignments_assignment_id FOREIGN KEY (assignment_id) REFERENCES assignments (id) ON DELETE CASCADE
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20260804181103_AssignmentAuthoringAndGrading') THEN
+    CREATE TABLE rubric_criteria (
+        id uuid NOT NULL,
+        assignment_id uuid NOT NULL,
+        "order" integer NOT NULL,
+        title character varying(200) NOT NULL,
+        description character varying(1000),
+        max_points numeric(6,2) NOT NULL,
+        created_at timestamptz NOT NULL,
+        updated_at timestamptz,
+        created_by uuid,
+        modified_by uuid,
+        is_deleted boolean NOT NULL,
+        deleted_at timestamptz,
+        deleted_by uuid,
+        CONSTRAINT pk_rubric_criteria PRIMARY KEY (id),
+        CONSTRAINT ck_rubric_criteria_points_positive CHECK (max_points > 0),
+        CONSTRAINT fk_rubric_criteria_assignments_assignment_id FOREIGN KEY (assignment_id) REFERENCES assignments (id) ON DELETE CASCADE
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20260804181103_AssignmentAuthoringAndGrading') THEN
+    CREATE TABLE submission_criterion_scores (
+        id uuid NOT NULL,
+        submission_id uuid NOT NULL,
+        rubric_criterion_id uuid NOT NULL,
+        points numeric(6,2) NOT NULL,
+        comment character varying(1000),
+        created_at timestamptz NOT NULL,
+        updated_at timestamptz,
+        created_by uuid,
+        modified_by uuid,
+        is_deleted boolean NOT NULL,
+        deleted_at timestamptz,
+        deleted_by uuid,
+        CONSTRAINT pk_submission_criterion_scores PRIMARY KEY (id),
+        CONSTRAINT ck_criterion_scores_points_non_negative CHECK (points >= 0),
+        CONSTRAINT fk_submission_criterion_scores_rubric_criteria_rubric_criterio FOREIGN KEY (rubric_criterion_id) REFERENCES rubric_criteria (id) ON DELETE RESTRICT,
+        CONSTRAINT fk_submission_criterion_scores_submissions_submission_id FOREIGN KEY (submission_id) REFERENCES submissions (id) ON DELETE CASCADE
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20260804181103_AssignmentAuthoringAndGrading') THEN
+    CREATE INDEX ix_assignment_attachments_assignment ON assignment_attachments (assignment_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20260804181103_AssignmentAuthoringAndGrading') THEN
+    CREATE INDEX ix_rubric_criteria_assignment_order ON rubric_criteria (assignment_id, "order");
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20260804181103_AssignmentAuthoringAndGrading') THEN
+    CREATE UNIQUE INDEX ix_criterion_scores_submission_criterion_unique ON submission_criterion_scores (submission_id, rubric_criterion_id) WHERE is_deleted = false;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20260804181103_AssignmentAuthoringAndGrading') THEN
+    CREATE INDEX ix_submission_criterion_scores_rubric_criterion_id ON submission_criterion_scores (rubric_criterion_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM __ef_migrations_history WHERE "migration_id" = '20260804181103_AssignmentAuthoringAndGrading') THEN
+    INSERT INTO __ef_migrations_history (migration_id, product_version)
+    VALUES ('20260804181103_AssignmentAuthoringAndGrading', '9.0.0');
+    END IF;
+END $EF$;
 COMMIT;
 

@@ -151,8 +151,17 @@ public sealed class StudentService(
             .Where(a => a.Id == assignmentId)
             .Select(a => new
             {
-                a.Id, a.Title, a.Description, a.Deadline, a.MaxMarks, a.PublishedAt,
+                a.Id, a.Title, a.Description, a.DescriptionJson, a.Deadline, a.MaxMarks,
+                a.PublishedAt, a.GradingType,
                 a.AllowLateSubmission, a.AllowResubmission,
+                Rubric = a.RubricCriteria
+                    .OrderBy(c => c.Order)
+                    .Select(c => new { c.Id, c.Order, c.Title, c.Description, c.MaxPoints })
+                    .ToList(),
+                Attachments = a.Attachments
+                    .OrderBy(f => f.CreatedAt)
+                    .Select(f => new StudentAttachmentDto(f.Id, f.FileName, f.SizeBytes))
+                    .ToList(),
                 ClassName = a.ClassSubject.Class.Name,
                 ClassCode = a.ClassSubject.Class.Code,
                 SubjectName = a.ClassSubject.Subject.Name,
@@ -179,10 +188,26 @@ public sealed class StudentService(
             allowLate: assignment.AllowLateSubmission,
             allowResubmission: assignment.AllowResubmission);
 
+        // Scores are only attached once the work has been marked — before that
+        // an empty rubric still tells the student what they are judged on.
+        var scores = submission is null
+            ? []
+            : await context.SubmissionCriterionScores
+                .AsNoTracking()
+                .Where(x => x.SubmissionId == submission.Id)
+                .ToDictionaryAsync(x => x.RubricCriterionId, x => new { x.Points, x.Comment }, ct);
+
         return new StudentAssignmentDetailDto(
             assignment.Id,
             assignment.Title,
             assignment.Description,
+            assignment.DescriptionJson,
+            assignment.GradingType,
+            [.. assignment.Rubric.Select(c => new StudentRubricCriterionDto(
+                c.Id, c.Order, c.Title, c.Description, c.MaxPoints,
+                scores.TryGetValue(c.Id, out var score) ? score.Points : null,
+                scores.TryGetValue(c.Id, out var withComment) ? withComment.Comment : null))],
+            assignment.Attachments,
             assignment.ClassName,
             assignment.ClassCode,
             assignment.SubjectName,

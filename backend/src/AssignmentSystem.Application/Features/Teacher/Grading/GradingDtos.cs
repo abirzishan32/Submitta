@@ -27,6 +27,8 @@ public sealed record SubmissionDetailDto(
     Guid AssignmentId,
     string AssignmentTitle,
     decimal MaxMarks,
+    GradingType GradingType,
+    IReadOnlyList<GradedCriterionDto> Rubric,
     DateTimeOffset Deadline,
     Guid StudentId,
     string StudentName,
@@ -52,7 +54,33 @@ public sealed record FeedbackDto(
     DateTimeOffset CreatedAt);
 
 /// <summary>Awards marks, optionally with a comment.</summary>
-public sealed record GradeSubmissionRequest(decimal Marks, string? Feedback);
+/// <summary>
+/// Records a mark.
+///
+/// For a rubric-graded assignment the teacher scores each criterion and the
+/// total is derived, so <c>Marks</c> is ignored and <c>CriterionScores</c> is
+/// required. For every other type it is the other way round.
+/// </summary>
+public sealed record GradeSubmissionRequest(
+    decimal Marks,
+    string? Feedback,
+    IReadOnlyList<CriterionScoreInput>? CriterionScores = null);
+
+/// <summary>A score against one rubric criterion.</summary>
+public sealed record CriterionScoreInput(Guid CriterionId, decimal Points, string? Comment);
+
+/// <summary>
+/// A rubric criterion together with what this submission scored on it, so the
+/// grading screen and the student's own view render from one shape.
+/// </summary>
+public sealed record GradedCriterionDto(
+    Guid Id,
+    int Order,
+    string Title,
+    string? Description,
+    decimal MaxPoints,
+    decimal? Points,
+    string? Comment);
 
 /// <summary>Adds a comment without changing marks or status.</summary>
 public sealed record AddFeedbackRequest(string Comment);
@@ -74,6 +102,8 @@ public sealed record AssignmentSubmissionsDto(
     Guid AssignmentId,
     string AssignmentTitle,
     decimal MaxMarks,
+    GradingType GradingType,
+    IReadOnlyList<GradedCriterionDto> Rubric,
     DateTimeOffset Deadline,
     int EnrolledStudentCount,
     int SubmittedCount,

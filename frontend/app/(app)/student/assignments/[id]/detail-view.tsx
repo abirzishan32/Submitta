@@ -11,6 +11,7 @@ import {
   CalendarClock,
   ExternalLink,
   Info,
+  FileText,
   Loader2,
   Lock,
   MessageSquare,
@@ -24,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { RichText } from "@/components/editor/rich-text";
 import { FadeInUp } from "@/components/motion/primitives";
 import { SubmissionStatusBadge, LateBadge, StatusPill } from "@/components/common/status-badge";
 import { useTranslation } from "@/components/providers/i18n-provider";
@@ -150,12 +152,84 @@ export function AssignmentDetailView({
             </div>
           </FadeInUp>
 
-          <FadeInUp delay={0.04}>
+          <FadeInUp delay={0.04} className="space-y-3">
             <div className="rounded-lg border border-border bg-card p-5">
-              <p className="whitespace-pre-wrap text-sm leading-relaxed text-pretty">
-                {assignment.description}
-              </p>
+              {/* Rendered by the same component that wrote it, so the brief
+                  reads exactly as the teacher composed it. */}
+              <RichText
+                value={assignment.descriptionJson}
+                fallback={assignment.description}
+              />
             </div>
+
+            {assignment.attachments.length > 0 ? (
+              <div className="space-y-1.5">
+                <h2 className="text-sm font-semibold">Question paper</h2>
+                <ul className="space-y-1.5">
+                  {assignment.attachments.map((file) => (
+                    <li key={file.id}>
+                      <a
+                        href={`/api/proxy/api/v1/assignments/${assignment.id}/attachments/${file.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2.5 rounded-lg border border-border bg-card px-3 py-2.5 transition-colors hover:bg-accent/50"
+                      >
+                        <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-primary">
+                          {file.fileName}
+                        </span>
+                        <span className="shrink-0 text-xs text-muted-foreground tabular">
+                          {Math.max(1, Math.round(file.sizeBytes / 1024))} KB
+                        </span>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {/* Shown before they start, not only after marking — a rubric is
+                only useful if the student knows what it asks for. */}
+            {assignment.rubric.length > 0 ? (
+              <div className="space-y-1.5">
+                <h2 className="text-sm font-semibold">How this is marked</h2>
+                <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+                  {assignment.rubric.map((criterion) => (
+                    <li key={criterion.id} className="p-3">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <p className="text-sm font-medium">{criterion.title}</p>
+                        <span className="shrink-0 text-xs tabular">
+                          {criterion.points !== null && criterion.points !== undefined ? (
+                            <>
+                              <span className="font-semibold">{n(criterion.points)}</span>
+                              <span className="text-muted-foreground">
+                                {" "}/ {n(criterion.maxPoints)}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-muted-foreground">
+                              {n(criterion.maxPoints)} marks
+                            </span>
+                          )}
+                        </span>
+                      </div>
+
+                      {criterion.description ? (
+                        <p className="pt-0.5 text-xs text-muted-foreground text-pretty">
+                          {criterion.description}
+                        </p>
+                      ) : null}
+
+                      {criterion.comment ? (
+                        <p className="mt-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-xs text-pretty">
+                          {criterion.comment}
+                        </p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </FadeInUp>
 
           {/* Submission form, or a clear reason why it is unavailable. */}

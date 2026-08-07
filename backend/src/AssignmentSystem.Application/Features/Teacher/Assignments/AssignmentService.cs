@@ -4,6 +4,7 @@ using AssignmentSystem.Application.Common.Interfaces;
 using AssignmentSystem.Application.Features.Notifications;
 using AssignmentSystem.Application.Common.Models;
 using AssignmentSystem.Application.Common.Security;
+using AssignmentSystem.Domain.Entities;
 using AssignmentSystem.Domain.Enums;
 using AssignmentSystem.Domain.Exceptions;
 using Microsoft.EntityFrameworkCore;
@@ -155,14 +156,19 @@ public sealed class AssignmentService(
             EnsureDeadlineIsInFuture(request.Deadline, now);
         }
 
+        var rubric = NormaliseRubric(request.GradingType, request.Rubric);
+        var maxMarks = ResolveMaxMarks(request.GradingType, request.MaxMarks, rubric);
+
         var entity = new DomainAssignment
         {
             Title = request.Title.Trim(),
             Description = request.Description.Trim(),
+            DescriptionJson = request.DescriptionJson,
             ClassSubjectId = request.ClassSubjectId,
             CreatedByTeacherId = currentUser.RequireUserId(),
             Deadline = request.Deadline,
-            MaxMarks = request.MaxMarks,
+            MaxMarks = maxMarks,
+            GradingType = request.GradingType,
             AllowResubmission = request.AllowResubmission,
             AllowLateSubmission = request.AllowLateSubmission,
             Status = request.PublishImmediately ? AssignmentStatus.Published : AssignmentStatus.Draft,
@@ -170,6 +176,21 @@ public sealed class AssignmentService(
         };
 
         context.Assignments.Add(entity);
+
+        for (var i = 0; i < rubric.Count; i++)
+        {
+            context.RubricCriteria.Add(new RubricCriterion
+            {
+                AssignmentId = entity.Id,
+                Order = i,
+                Title = rubric[i].Title.Trim(),
+                Description = string.IsNullOrWhiteSpace(rubric[i].Description)
+                    ? null
+                    : rubric[i].Description!.Trim(),
+                MaxPoints = rubric[i].MaxPoints,
+            });
+        }
+
         await context.SaveChangesAsync(ct);
 
         logger.LogInformation("Teacher {TeacherId} created assignment {AssignmentId} ({Status}).",
@@ -193,19 +214,32 @@ public sealed class AssignmentService(
 
         var hasSubmissions = await context.Submissions.AnyAsync(s => s.AssignmentId == id, ct);
 
+        var rubric = NormaliseRubric(request.GradingType, request.Rubric);
+        var maxMarks = ResolveMaxMarks(request.GradingType, request.MaxMarks, rubric);
+
+        // Changing how work is judged after some of it has been judged would
+        // leave one cohort marked one way and the rest another, with no record
+        // of which is which.
+        if (request.GradingType != entity.GradingType && hasSubmissions)
+        {
+            throw new BusinessRuleException(
+                "Work has already been submitted, so the grading method can no longer be "
+                + "changed. Marks already awarded would no longer mean what they say.");
+        }
+
         // Lowering the ceiling below marks already awarded would leave grades
         // above the maximum, which no later validation could repair.
-        if (request.MaxMarks != entity.MaxMarks && hasSubmissions)
+        if (maxMarks != entity.MaxMarks && hasSubmissions)
         {
             var highestAwarded = await context.Submissions
                 .Where(s => s.AssignmentId == id && s.Marks != null)
                 .MaxAsync(s => (decimal?)s.Marks, ct);
 
-            if (highestAwarded > request.MaxMarks)
+            if (highestAwarded > maxMarks)
             {
                 throw new BusinessRuleException(
                     $"Marks of {highestAwarded} have already been awarded, so the maximum "
-                    + $"cannot be reduced to {request.MaxMarks}.");
+                    + $"cannot be reduced to {maxMarks}.");
             }
         }
 
@@ -221,11 +255,14 @@ public sealed class AssignmentService(
 
         entity.Title = request.Title.Trim();
         entity.Description = request.Description.Trim();
+        entity.DescriptionJson = request.DescriptionJson;
         entity.Deadline = request.Deadline;
-        entity.MaxMarks = request.MaxMarks;
+        entity.MaxMarks = maxMarks;
+        entity.GradingType = request.GradingType;
         entity.AllowResubmission = request.AllowResubmission;
         entity.AllowLateSubmission = request.AllowLateSubmission;
 
+        await ReplaceRubricAsync(id, rubric, ct);
         await context.SaveChangesAsync(ct);
 
         logger.LogInformation("Teacher {TeacherId} updated assignment {AssignmentId}.",
@@ -360,6 +397,138 @@ public sealed class AssignmentService(
         return entity;
     }
 
+    /// <summary>
+    /// Brings the stored rubric into line with what the teacher submitted.
+    /// </summary>
+    /// <remarks>
+    /// Criteria carry an id so an edit updates the existing row rather than
+    /// replacing it. That matters because scores point at criteria: swapping a
+    /// row out would either orphan the marks already given against it or, worse,
+    /// silently re-attach them to a criterion that now means something else.
+    ///
+    /// Removing a criterion that has already been marked against is refused
+    /// outright, for the same reason.
+    /// </remarks>
+    private async Task ReplaceRubricAsync(
+        Guid assignmentId, IReadOnlyList<RubricCriterionInput> rubric, CancellationToken ct)
+    {
+        var existing = await context.RubricCriteria
+            .Where(c => c.AssignmentId == assignmentId)
+            .ToListAsync(ct);
+
+        var keptIds = rubric.Where(c => c.Id is not null).Select(c => c.Id!.Value).ToHashSet();
+        var removed = existing.Where(c => !keptIds.Contains(c.Id)).ToList();
+
+        if (removed.Count > 0)
+        {
+            var removedIds = removed.Select(c => c.Id).ToList();
+
+            var alreadyMarked = await context.SubmissionCriterionScores
+                .AnyAsync(s => removedIds.Contains(s.RubricCriterionId), ct);
+
+            if (alreadyMarked)
+            {
+                throw new BusinessRuleException(
+                    "A criterion you removed has already been marked against. Marks awarded "
+                    + "for it would be lost, so the rubric cannot be changed that way.");
+            }
+
+            context.RubricCriteria.RemoveRange(removed);
+        }
+
+        for (var i = 0; i < rubric.Count; i++)
+        {
+            var input = rubric[i];
+
+            var description = string.IsNullOrWhiteSpace(input.Description)
+                ? null
+                : input.Description!.Trim();
+
+            var match = input.Id is { } id ? existing.FirstOrDefault(c => c.Id == id) : null;
+
+            if (match is null)
+            {
+                context.RubricCriteria.Add(new RubricCriterion
+                {
+                    AssignmentId = assignmentId,
+                    Order = i,
+                    Title = input.Title.Trim(),
+                    Description = description,
+                    MaxPoints = input.MaxPoints,
+                });
+
+                continue;
+            }
+
+            match.Order = i;
+            match.Title = input.Title.Trim();
+            match.Description = description;
+            match.MaxPoints = input.MaxPoints;
+        }
+    }
+
+    /// <summary>
+    /// The rubric a request is really asking for, checked.
+    /// </summary>
+    /// <remarks>
+    /// A rubric is only meaningful for the Rubric type; sending one alongside
+    /// Points would leave criteria in the database that nothing scores against,
+    /// and which would silently start applying if the type were changed later.
+    /// So a rubric on any other type is discarded rather than stored.
+    /// </remarks>
+    private static IReadOnlyList<RubricCriterionInput> NormaliseRubric(
+        GradingType type, IReadOnlyList<RubricCriterionInput>? rubric)
+    {
+        if (type != GradingType.Rubric) return [];
+
+        var criteria = (rubric ?? [])
+            .Where(c => !string.IsNullOrWhiteSpace(c.Title))
+            .ToList();
+
+        if (criteria.Count == 0)
+        {
+            throw new BusinessRuleException(
+                "A rubric-graded assignment needs at least one criterion. "
+                + "Add what the work is judged on, and what each part is worth.");
+        }
+
+        if (criteria.Any(c => c.MaxPoints <= 0))
+        {
+            throw new BusinessRuleException("Every rubric criterion must be worth more than zero.");
+        }
+
+        // Duplicated headings make a mark sheet impossible to read, and make
+        // "which one did I lose marks on?" unanswerable.
+        var duplicate = criteria
+            .GroupBy(c => c.Title.Trim(), StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault(g => g.Count() > 1);
+
+        if (duplicate is not null)
+        {
+            throw new BusinessRuleException(
+                $"Two rubric criteria are both called '{duplicate.Key}'. Give each a distinct name.");
+        }
+
+        return criteria;
+    }
+
+    /// <summary>
+    /// The total this assignment is out of.
+    /// </summary>
+    /// <remarks>
+    /// Some grading types decide it rather than the teacher: a percentage is out
+    /// of 100 or it is not a percentage, a pass is one mark out of one, and a
+    /// rubric totals its own criteria. Resolving it here rather than trusting
+    /// the request means the stored maximum can never contradict the type.
+    /// </remarks>
+    private static decimal ResolveMaxMarks(
+        GradingType type, decimal requested, IReadOnlyList<RubricCriterionInput> rubric)
+    {
+        if (type == GradingType.Rubric) return rubric.Sum(c => c.MaxPoints);
+
+        return DomainAssignment.FixedMaxMarksFor(type) ?? requested;
+    }
+
     private static void EnsureDeadlineIsInFuture(DateTimeOffset deadline, DateTimeOffset now)
     {
         if (deadline <= now)
@@ -380,10 +549,12 @@ public sealed class AssignmentService(
             a.ClassSubject.Subject.Code,
             a.Deadline,
             a.MaxMarks,
+            a.GradingType,
             a.Status,
             a.PublishedAt,
             a.AllowResubmission,
             a.AllowLateSubmission,
+            a.Attachments.Any(),
             a.CreatedByTeacher.FullName,
             a.Submissions.Count,
             a.Submissions.Count(s => s.Status == SubmissionStatus.Graded),
@@ -400,6 +571,7 @@ public sealed class AssignmentService(
             a.Id,
             a.Title,
             a.Description,
+            a.DescriptionJson,
             a.ClassSubjectId,
             a.ClassSubject.Class.Name,
             a.ClassSubject.Class.Code,
@@ -407,6 +579,19 @@ public sealed class AssignmentService(
             a.ClassSubject.Subject.Code,
             a.Deadline,
             a.MaxMarks,
+            a.GradingType,
+            a.RubricCriteria
+                .OrderBy(c => c.Order)
+                .Select(c => new RubricCriterionDto(
+                    c.Id, c.Order, c.Title, c.Description, c.MaxPoints))
+                .ToList(),
+            // Deliberately without Content: the bytes are only ever selected by
+            // the download endpoint, never by a detail read.
+            a.Attachments
+                .OrderBy(f => f.CreatedAt)
+                .Select(f => new AttachmentDto(
+                    f.Id, f.FileName, f.ContentType, f.SizeBytes, f.CreatedAt))
+                .ToList(),
             a.Status,
             a.PublishedAt,
             a.AllowResubmission,

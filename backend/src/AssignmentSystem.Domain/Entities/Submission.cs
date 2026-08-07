@@ -67,6 +67,9 @@ public class Submission : BaseEntity
     /// <summary>The operation log this submission's replay is rebuilt from.</summary>
     public ICollection<SubmissionEvent> Events { get; set; } = [];
 
+    /// <summary>Per-criterion scores, when the assignment is marked by rubric.</summary>
+    public ICollection<SubmissionCriterionScore> CriterionScores { get; set; } = [];
+
     public ICollection<SubmissionVersion> Versions { get; set; } = [];
 
     // --- Domain queries ---

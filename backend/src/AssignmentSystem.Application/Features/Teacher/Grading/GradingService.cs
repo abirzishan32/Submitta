@@ -93,8 +93,13 @@ public sealed class GradingService(
             .Where(a => a.Id == assignmentId)
             .Select(a => new
             {
-                a.Id, a.Title, a.MaxMarks, a.Deadline, a.ClassSubjectId,
-                ClassId = a.ClassSubject.ClassId
+                a.Id, a.Title, a.MaxMarks, a.GradingType, a.Deadline, a.ClassSubjectId,
+                ClassId = a.ClassSubject.ClassId,
+                Rubric = a.RubricCriteria
+                    .OrderBy(c => c.Order)
+                    .Select(c => new GradedCriterionDto(
+                        c.Id, c.Order, c.Title, c.Description, c.MaxPoints, null, null))
+                    .ToList()
             })
             .FirstOrDefaultAsync(ct)
             ?? throw new NotFoundException("Assignment", assignmentId);
@@ -127,6 +132,8 @@ public sealed class GradingService(
             assignment.Id,
             assignment.Title,
             assignment.MaxMarks,
+            assignment.GradingType,
+            assignment.Rubric,
             assignment.Deadline,
             enrolledCount,
             submissions.Count,
@@ -152,19 +159,27 @@ public sealed class GradingService(
         Guid submissionId, GradeSubmissionRequest request, CancellationToken ct = default)
     {
         var submission = await LoadForGradingAsync(submissionId, ct);
+        var assignment = submission.Assignment;
 
-        // The ceiling belongs to the assignment, so it cannot live in a
-        // validator that only sees the request.
-        if (request.Marks > submission.Assignment.MaxMarks)
+        // For a rubric the total is derived from the criteria rather than typed,
+        // so the mark is computed here and the request's own figure ignored.
+        var marks = assignment.GradingType == GradingType.Rubric
+            ? await ApplyRubricAsync(submission, request.CriterionScores, ct)
+            : request.Marks;
+
+        // The rules belong to the assignment, so they cannot live in a validator
+        // that only ever sees the request.
+        if (!assignment.IsValidMark(marks))
         {
-            throw new BusinessRuleException(
-                $"Marks cannot exceed the maximum of {submission.Assignment.MaxMarks} for this assignment.");
+            throw new BusinessRuleException(assignment.GradingType == GradingType.PassFail
+                ? "This assignment is marked pass or fail, so the result must be one or the other."
+                : $"Marks must be between 0 and {assignment.MaxMarks} for this assignment.");
         }
 
         var now = dateTime.UtcNow;
         var teacherId = currentUser.RequireUserId();
 
-        submission.Marks = request.Marks;
+        submission.Marks = marks;
         submission.Status = SubmissionStatus.Graded;
         submission.GradedByTeacherId = teacherId;
         submission.GradedAt = now;
@@ -176,7 +191,7 @@ public sealed class GradingService(
                 SubmissionId = submissionId,
                 TeacherId = teacherId,
                 Comment = request.Feedback.Trim(),
-                MarksAtTime = request.Marks
+                MarksAtTime = marks
             });
         }
 
@@ -305,6 +320,91 @@ public sealed class GradingService(
         return submission;
     }
 
+    /// <summary>
+    /// Records the per-criterion scores and returns their total.
+    /// </summary>
+    /// <remarks>
+    /// Every criterion must be scored. A partial rubric would produce a total
+    /// that looks like a mark but silently omits whatever was skipped, and the
+    /// student would have no way to tell the difference between "scored zero"
+    /// and "not looked at".
+    ///
+    /// Existing scores are updated rather than added to, so re-marking replaces
+    /// the result instead of doubling it.
+    /// </remarks>
+    private async Task<decimal> ApplyRubricAsync(
+        Submission submission,
+        IReadOnlyList<CriterionScoreInput>? scores,
+        CancellationToken ct)
+    {
+        var criteria = await context.RubricCriteria
+            .AsNoTracking()
+            .Where(c => c.AssignmentId == submission.AssignmentId)
+            .OrderBy(c => c.Order)
+            .ToListAsync(ct);
+
+        if (criteria.Count == 0)
+        {
+            throw new BusinessRuleException(
+                "This assignment is marked by rubric but has no criteria. Edit the assignment "
+                + "and add them before marking.");
+        }
+
+        var supplied = (scores ?? [])
+            .GroupBy(s => s.CriterionId)
+            .ToDictionary(g => g.Key, g => g.Last());
+
+        var missing = criteria.Where(c => !supplied.ContainsKey(c.Id)).ToList();
+
+        if (missing.Count > 0)
+        {
+            throw new BusinessRuleException(
+                $"Score every criterion before saving. Still to do: "
+                + string.Join(", ", missing.Select(c => $"'{c.Title}'")) + ".");
+        }
+
+        var existing = await context.SubmissionCriterionScores
+            .Where(s => s.SubmissionId == submission.Id)
+            .ToListAsync(ct);
+
+        decimal total = 0;
+
+        foreach (var criterion in criteria)
+        {
+            var input = supplied[criterion.Id];
+
+            if (input.Points < 0 || input.Points > criterion.MaxPoints)
+            {
+                throw new BusinessRuleException(
+                    $"'{criterion.Title}' is out of {criterion.MaxPoints}, so {input.Points} "
+                    + "is not a possible score.");
+            }
+
+            total += input.Points;
+
+            var comment = string.IsNullOrWhiteSpace(input.Comment) ? null : input.Comment.Trim();
+            var row = existing.FirstOrDefault(s => s.RubricCriterionId == criterion.Id);
+
+            if (row is null)
+            {
+                context.SubmissionCriterionScores.Add(new SubmissionCriterionScore
+                {
+                    SubmissionId = submission.Id,
+                    RubricCriterionId = criterion.Id,
+                    Points = input.Points,
+                    Comment = comment,
+                });
+            }
+            else
+            {
+                row.Points = input.Points;
+                row.Comment = comment;
+            }
+        }
+
+        return total;
+    }
+
     private static readonly Expression<Func<Submission, SubmissionSummaryDto>> SummaryProjection =
         s => new SubmissionSummaryDto(
             s.Id,
@@ -329,6 +429,26 @@ public sealed class GradingService(
             s.AssignmentId,
             s.Assignment.Title,
             s.Assignment.MaxMarks,
+            s.Assignment.GradingType,
+            // The rubric with this submission's scores folded in, so the
+            // grading screen renders from one shape rather than joining two.
+            s.Assignment.RubricCriteria
+                .OrderBy(c => c.Order)
+                .Select(c => new GradedCriterionDto(
+                    c.Id,
+                    c.Order,
+                    c.Title,
+                    c.Description,
+                    c.MaxPoints,
+                    s.CriterionScores
+                        .Where(x => x.RubricCriterionId == c.Id)
+                        .Select(x => (decimal?)x.Points)
+                        .FirstOrDefault(),
+                    s.CriterionScores
+                        .Where(x => x.RubricCriterionId == c.Id)
+                        .Select(x => x.Comment)
+                        .FirstOrDefault()))
+                .ToList(),
             s.Assignment.Deadline,
             s.StudentId,
             s.Student.FullName,

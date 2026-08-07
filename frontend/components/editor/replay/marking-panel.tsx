@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { FormField } from "@/components/common/form-field";
+import { Label } from "@/components/ui/label";
 import { apiClient, ClientApiError } from "@/lib/api/client";
 import { useTranslation } from "@/components/providers/i18n-provider";
 import { formatRelative } from "@/lib/format";
@@ -48,16 +49,43 @@ export function MarkingPanel({
     submission.marks !== null ? String(submission.marks) : "",
   );
   const [feedback, setFeedback] = useState("");
+
+  // One score per criterion, keyed by id, for a rubric-marked assignment.
+  const [scores, setScores] = useState<Record<string, { points: string; comment: string }>>(
+    () =>
+      Object.fromEntries(
+        submission.rubric.map((c) => [
+          c.id,
+          { points: c.points?.toString() ?? "", comment: c.comment ?? "" },
+        ]),
+      ),
+  );
+
+  const isRubric = submission.gradingType === "Rubric";
+  const isPassFail = submission.gradingType === "PassFail";
+
+  const rubricTotal = submission.rubric.reduce(
+    (sum, c) => sum + (Number(scores[c.id]?.points) || 0),
+    0,
+  );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [changingStatus, setChangingStatus] = useState(false);
 
   const parsedMarks = Number(marks);
-  const marksValid =
-    marks.trim() !== "" &&
-    Number.isFinite(parsedMarks) &&
-    parsedMarks >= 0 &&
-    parsedMarks <= submission.maxMarks;
+
+  const everyCriterionScored = submission.rubric.every((c) => {
+    const raw = scores[c.id]?.points ?? "";
+    const value = Number(raw);
+    return raw.trim() !== "" && Number.isFinite(value) && value >= 0 && value <= c.maxPoints;
+  });
+
+  const marksValid = isRubric
+    ? submission.rubric.length > 0 && everyCriterionScored
+    : marks.trim() !== "" &&
+      Number.isFinite(parsedMarks) &&
+      parsedMarks >= 0 &&
+      parsedMarks <= submission.maxMarks;
 
   async function grade() {
     if (!marksValid) {
@@ -70,8 +98,17 @@ export function MarkingPanel({
 
     try {
       await apiClient.post(`/api/v1/grading/submissions/${submission.id}/grade`, {
-        marks: parsedMarks,
+        // For a rubric the API derives the total from the criteria and ignores
+        // this figure, so there is no second source of truth to disagree.
+        marks: isRubric ? 0 : parsedMarks,
         feedback: feedback.trim() || null,
+        criterionScores: isRubric
+          ? submission.rubric.map((c) => ({
+              criterionId: c.id,
+              points: Number(scores[c.id]?.points) || 0,
+              comment: scores[c.id]?.comment?.trim() || null,
+            }))
+          : null,
       });
 
       toast.success(t.grading.graded);
@@ -130,27 +167,127 @@ export function MarkingPanel({
   return (
     <div className={cn("space-y-4", className)}>
       <div className="space-y-4 rounded-xl border border-border bg-card p-4">
-        <FormField
-          id="marks"
-          label={t.grading.marks}
-          hint={tx(t.grading.outOf, { max: n(submission.maxMarks) })}
-        >
-          <div className="flex items-center gap-2">
-            <Input
-              id="marks"
-              type="number"
-              min={0}
-              max={submission.maxMarks}
-              step="0.5"
-              value={marks}
-              onChange={(event) => setMarks(event.target.value)}
-              className="tabular"
-            />
-            <span className="shrink-0 text-sm text-muted-foreground tabular">
-              / {n(submission.maxMarks)}
-            </span>
+        {/* The control follows the scheme. A pass/fail decision typed into a
+            number box, or a rubric total typed by hand, would both invite a
+            result the assignment does not allow. */}
+        {isRubric ? (
+          <div className="space-y-2.5">
+            <div className="flex items-baseline justify-between gap-3">
+              <Label>Rubric</Label>
+              <span className="text-xs tabular">
+                <span className="font-semibold">{n(rubricTotal)}</span>
+                <span className="text-muted-foreground"> / {n(submission.maxMarks)}</span>
+              </span>
+            </div>
+
+            <ol className="space-y-2">
+              {submission.rubric.map((criterion) => {
+                const entry = scores[criterion.id] ?? { points: "", comment: "" };
+                const value = Number(entry.points);
+                const over = entry.points.trim() !== "" && value > criterion.maxPoints;
+
+                return (
+                  <li
+                    key={criterion.id}
+                    className="space-y-1.5 rounded-lg border border-border p-2.5"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium leading-snug">{criterion.title}</p>
+                        {criterion.description ? (
+                          <p className="pt-0.5 text-xs text-muted-foreground text-pretty">
+                            {criterion.description}
+                          </p>
+                        ) : null}
+                      </div>
+
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Input
+                          aria-label={`Marks for ${criterion.title}`}
+                          type="number"
+                          min={0}
+                          max={criterion.maxPoints}
+                          step="0.5"
+                          value={entry.points}
+                          onChange={(event) =>
+                            setScores((current) => ({
+                              ...current,
+                              [criterion.id]: { ...entry, points: event.target.value },
+                            }))
+                          }
+                          aria-invalid={over}
+                          className="h-8 w-16 tabular"
+                        />
+                        <span className="text-xs text-muted-foreground tabular">
+                          / {n(criterion.maxPoints)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <Input
+                      aria-label={`Comment on ${criterion.title}`}
+                      placeholder="Note on this criterion (optional)"
+                      value={entry.comment}
+                      onChange={(event) =>
+                        setScores((current) => ({
+                          ...current,
+                          [criterion.id]: { ...entry, comment: event.target.value },
+                        }))
+                      }
+                      className="h-8 text-xs"
+                    />
+                  </li>
+                );
+              })}
+            </ol>
           </div>
-        </FormField>
+        ) : isPassFail ? (
+          <div className="space-y-1.5">
+            <Label>{t.grading.marks}</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant={marks === "1" ? "default" : "outline"}
+                onClick={() => setMarks("1")}
+              >
+                Pass
+              </Button>
+              <Button
+                type="button"
+                variant={marks === "0" ? "destructive" : "outline"}
+                onClick={() => setMarks("0")}
+              >
+                Fail
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <FormField
+            id="marks"
+            label={t.grading.marks}
+            hint={
+              submission.gradingType === "Percentage"
+                ? "Out of 100"
+                : tx(t.grading.outOf, { max: n(submission.maxMarks) })
+            }
+          >
+            <div className="flex items-center gap-2">
+              <Input
+                id="marks"
+                type="number"
+                min={0}
+                max={submission.maxMarks}
+                step="0.5"
+                value={marks}
+                onChange={(event) => setMarks(event.target.value)}
+                className="tabular"
+              />
+              <span className="shrink-0 text-sm text-muted-foreground tabular">
+                {submission.gradingType === "Percentage" ? "%" : `/ ${n(submission.maxMarks)}`}
+              </span>
+            </div>
+          </FormField>
+        )}
 
         <FormField id="feedback" label={t.grading.feedback} optional>
           <Textarea
