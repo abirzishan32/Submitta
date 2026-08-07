@@ -1,6 +1,6 @@
-# Submitta — Assignment & Submission Management System
+# Submitta - Assignment & Submission Management System
 
-A role-based web application for managing coursework in schools and colleges.
+A role based web application for managing coursework in schools and colleges.
 Teachers set assignments against a class and subject, students submit and revise
 their work, and teachers return marks and feedback. Administrators manage users,
 classes, subjects and teaching allocations.
@@ -43,9 +43,8 @@ classes, subjects and teaching allocations.
 
 **Appendices**
 
-20. [Design assumptions](#20-design-assumptions)
-21. [Known limitations](#21-known-limitations)
-22. [Future work](#22-future-work)
+20. [Known limitations](#20-known-limitations)
+21. [Future work](#21-future-work)
 
 ---
 
@@ -648,8 +647,9 @@ the index rather than fragmenting it as random v4 values do.
 .
 ├── docker-compose.yml            Three-service stack: db, api, web
 ├── .env.example                  Compose overrides, placeholders only
-├── database/                     Standalone schema script and notes
-│   └── schema.sql                Full DDL, for creating the schema directly
+├── database/                     Standalone SQL scripts — see section 15
+│   ├── schema.sql                Full DDL — every table, index and constraint
+│   └── seed.sql                  Demonstration data for an existing schema
 ├── backend/
 │   ├── Dockerfile                Multi-stage: build → test → publish → runtime
 │   ├── .dockerignore             Excludes .env and host build output
@@ -973,27 +973,138 @@ regains focus, closing the gap left by a sleeping machine.
 
 ## 15. Database and migrations
 
-### 15.1 Automatic setup
+**No table has to be created by hand in any of the routes below.**
 
-The API applies all pending migrations and seeds demo data at startup, before
-serving any request. Under Docker this requires no action at all; running
-locally it requires only an empty database.
+The authoritative definition of the schema is the EF Core migrations in
+`backend/src/AssignmentSystem.Infrastructure/Persistence/Migrations/` — six
+migrations plus the model snapshot. The two SQL scripts in `database/` are
+generated from those migrations, so they cannot describe a different schema.
 
-Verified: from an empty volume, startup produces **18 tables** (17 application
-tables plus the EF migrations history) and a fully populated demo dataset.
+| Artefact | Purpose |
+|---|---|
+| `Migrations/` | Six EF Core migrations; the source of truth |
+| `database/schema.sql` | Complete DDL — every table, enum, index and constraint |
+| `database/seed.sql` | Demonstration data for an existing schema |
 
-### 15.2 Applying the schema directly
-
-For evaluation without running the application, `database/schema.sql` contains
-the complete DDL:
+### 15.1 Route 1 — Docker
 
 ```bash
-createdb assignment_system && psql -d assignment_system -f database/schema.sql
+docker compose up --build
 ```
 
-The API will then detect the schema as current and proceed to seeding.
+The API container applies every migration and seeds the demonstration data
+before it accepts a request. Neither SQL script is needed.
 
-### 15.3 Managing migrations manually
+### 15.2 Route 2 — Local, application-managed
+
+Create an empty database. That is the only manual step.
+
+```bash
+createdb assignment_system
+```
+
+```bash
+dotnet run --project backend/src/AssignmentSystem.Api
+```
+
+The API detects an empty database, applies all six migrations, hardens the
+schema and seeds it. Neither SQL script is needed.
+
+Verified: from an empty database, startup produces **18 tables** — 17
+application tables plus the EF migrations history — and a fully populated
+demonstration dataset.
+
+### 15.3 Route 3 — Apply the SQL scripts directly
+
+For provisioning or inspecting the database without running the application.
+
+```bash
+createdb assignment_system
+```
+
+```bash
+psql -d assignment_system -f database/schema.sql
+```
+
+```bash
+psql -d assignment_system -f database/seed.sql
+```
+
+`schema.sql` records each migration in `__ef_migrations_history` as it applies
+it, so the API recognises the schema as current and does **not** attempt to
+apply the migrations again. Verified: it logs `Database schema is up to date.`
+and proceeds directly to seeding.
+
+`seed.sql` is optional — Routes 1 and 2 produce the same rows without it. The
+seeder is idempotent, so starting the API over a database already loaded from
+`seed.sql` leaves the row counts unchanged rather than duplicating anything.
+
+### 15.4 What the scripts contain
+
+**`schema.sql`** is generated with:
+
+```bash
+dotnet ef migrations script --idempotent \
+  --project backend/src/AssignmentSystem.Infrastructure \
+  --startup-project backend/src/AssignmentSystem.Api \
+  --output database/schema.sql
+```
+
+Being idempotent, every statement is guarded by a check against
+`__ef_migrations_history`, so the script is safe against an empty database or
+one already partly migrated. It replays the full migration history rather than
+describing only the end state, so a table that was added and later removed
+appears twice — created by one migration, dropped by a later one.
+`assignment_attachments` is the one example. The net result is 17 application
+tables plus `__ef_migrations_history`.
+
+**`seed.sql`** is exported from the application's own seeder, so the two cannot
+disagree.
+
+| Rows | Table | Notes |
+|---|---|---|
+| 6 | `users` | 1 administrator, 2 teachers, 3 students |
+| 2 | `classes` | A school section and a college course |
+| 3 | `subjects` | |
+| 3 | `class_subjects` | The offerings assignments attach to |
+| 3 | `teacher_assignments` | Which teacher may act on which offering |
+| 3 | `enrollments` | |
+| 4 | `assignments` | Draft, open, due soon, past deadline |
+| 3 | `submissions` | One already graded at 85/100 |
+| 1 | `submission_feedbacks` | |
+| 8 | `application_settings` | |
+
+`refresh_tokens`, `notifications` and `audit_logs` are excluded deliberately:
+they hold session and runtime state, not sample data.
+
+Every demonstration account uses the password `Demo@1234`; the stored values are
+BCrypt hashes of that published demo credential.
+
+To regenerate it after changing the seeder:
+
+```bash
+pg_dump -d assignment_system --data-only --column-inserts --no-owner \
+  --no-privileges --exclude-table=__ef_migrations_history \
+  --exclude-table=refresh_tokens --exclude-table=notifications \
+  --exclude-table=audit_logs --file=database/seed.sql
+```
+
+### 15.5 Verification performed
+
+Each route was executed against PostgreSQL 17 and the result observed rather
+than assumed.
+
+| Check | Result |
+|---|---|
+| `schema.sql` applied to an empty database | Clean apply, **18 tables**, `assignment_attachments` correctly absent |
+| Migration history after `schema.sql` | All six migrations recorded |
+| API started against a `schema.sql` database | `Database schema is up to date.` — no migration re-applied, then seeded |
+| `seed.sql` applied after `schema.sql` | Clean apply, foreign keys satisfied in dump order |
+| Sign-in using hashes from `seed.sql` | Administrator, teacher and student all authenticated |
+| API started over a `seed.sql` database | Row counts unchanged — nothing duplicated |
+| Docker cold start from an empty volume | Six migrations, RLS enabled, seeded, healthy in ~12 s |
+
+### 15.6 Managing migrations manually
 
 ```bash
 dotnet ef migrations add <Name> \
@@ -1007,7 +1118,7 @@ dotnet ef database update \
   --startup-project backend/src/AssignmentSystem.Api
 ```
 
-### 15.4 Resetting
+### 15.7 Resetting
 
 Under Docker:
 
