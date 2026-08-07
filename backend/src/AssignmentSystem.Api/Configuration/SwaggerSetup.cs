@@ -17,16 +17,10 @@ public static class SwaggerSetup
         {
             options.SwaggerDoc("v1", new OpenApiInfo
             {
-                Title = "Assignment & Submission Management API",
+                Title = "Submitta API",
                 Version = "v1",
                 Description =
-                    "Role-based assignment and submission system for schools and colleges.\n\n" +
-                    "**Getting started:** call `POST /api/v1/auth/login` with one of the demo " +
-                    "accounts from the README, copy the `accessToken` from the response, then " +
-                    "click **Authorize** above and paste it. All protected endpoints will then " +
-                    "carry your role.\n\n" +
-                    "Authorization is enforced server-side on every endpoint — the role is read " +
-                    "from the signed token, never from the request."
+                    "Role based assignment and submission system for schools and colleges.\n"
             });
 
             var scheme = new OpenApiSecurityScheme

@@ -103,7 +103,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI(options =>
     {
         options.SwaggerEndpoint("/swagger/v1/swagger.json", "Submitta API v1");
-        options.DocumentTitle = "Assignment & Submission Management API";
+        options.DocumentTitle = "Submitta API";
         options.DisplayRequestDuration();
     });
 }
