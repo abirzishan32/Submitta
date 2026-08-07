@@ -90,7 +90,7 @@ export function Hero() {
             className="inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-2.5 py-1 text-xs text-muted-foreground"
           >
             <span className="size-1.5 rounded-full bg-success" />
-            For schools and colleges
+            For schools, colleges and universities
           </motion.p>
 
           <motion.h1
