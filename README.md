@@ -15,6 +15,7 @@ classes, subjects and teaching allocations.
 1. [Overview](#1-overview)
 2. [Running with Docker](#2-running-with-docker)
 3. [Running without Docker](#3-running-without-docker)
+   — [Populating the database from the SQL scripts](#3a-populating-the-database-from-the-sql-scripts)
 4. [Configuration reference](#4-configuration-reference)
 5. [Demo credentials](#5-demo-credentials)
 
@@ -74,246 +75,442 @@ tests and container configuration. No table needs to be created by hand.
 
 ## 2. Running with Docker
 
-### 2.1 Prerequisites
+> Run every command from the **repository root** — the directory containing
+> `docker-compose.yml`.
 
-Docker Desktop, including Compose v2. Verified against Docker 27.5.1 and Compose
-v2.32.4 on Apple Silicon.
-
-```bash
-docker --version && docker compose version
-```
-
-Nothing else is required. The .NET SDK, Node.js and PostgreSQL are all supplied
-by the images.
-
-### 2.2 Starting the stack
-
-From the repository root:
+### Step 1 — Confirm Docker is installed and running
 
 ```bash
-docker compose up --build
+docker --version
 ```
 
-The first build takes several minutes while the base images are pulled and the
-two applications are compiled. Subsequent builds reuse the layer cache.
+```bash
+docker compose version
+```
 
-Add `-d` to run detached:
+```bash
+docker info
+```
+
+If `docker info` reports an error, start Docker Desktop and wait for it to
+finish starting.
+
+### Step 2 — Build and start all three services
 
 ```bash
 docker compose up --build -d
 ```
 
-### 2.3 Service endpoints
+First run takes several minutes. It builds the API and frontend images and
+pulls PostgreSQL.
 
-| Service | URL | Notes |
-|---|---|---|
-| **Web application** | <http://localhost:3000> | The application itself |
-| **API** | <http://localhost:5062> | Direct access, not required for normal use |
-| **Swagger UI** | <http://localhost:5062/swagger> | Available in Development mode |
-| **Health check** | <http://localhost:5062/health> | Anonymous, for probes |
-| **PostgreSQL** | `localhost:5433` | Port 5433 avoids collision with a host PostgreSQL |
-
-Sign in with any account from [Section 5](#5-demo-credentials).
-
-### 2.4 What happens on first start
-
-Startup is ordered by health checks rather than by fixed delays, so the API
-never starts against a database that is still initialising.
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant C as docker compose
-    participant D as db (PostgreSQL 17)
-    participant A as api (ASP.NET Core 9)
-    participant W as web (Next.js 16)
-
-    C->>D: start container
-    D-->>C: pg_isready → healthy
-    C->>A: start container (gated on db healthy)
-    A->>D: apply 6 EF Core migrations
-    A->>D: enable Row-Level Security on every table
-    A->>D: seed demo users, classes, assignments
-    A-->>C: GET /health → healthy
-    C->>W: start container (gated on api healthy)
-    W-->>C: GET /login → healthy
-```
-
-Verified startup log from a clean volume:
-
-```
-[INF] Applying 6 pending migration(s): InitialSchema, RichEditorAndReplay,
-      Notifications, EnableRowLevelSecurity, AssignmentAuthoringAndGrading,
-      RemoveAssignmentAttachments
-[INF] Row-Level Security enabled across the public schema (0 table(s) still unprotected).
-[INF] Seeding database…
-[INF] Seeded 6 User row(s).
-[INF] Seeded 4 Assignment row(s).
-[INF] Seeding complete.
-[INF] Now listening on: http://[::]:8080
-```
-
-### 2.5 Common operations
-
-Check status — all three services should report `healthy`:
+### Step 3 — Wait until all three services report `healthy`
 
 ```bash
 docker compose ps
 ```
 
-Follow logs for one service:
+Repeat until the output shows `healthy` for all three:
 
-```bash
-docker compose logs -f api
+```
+NAME              SERVICE   STATUS
+submitta-api-1    api       Up (healthy)
+submitta-db-1     db        Up (healthy)
+submitta-web-1    web       Up (healthy)
 ```
 
-Stop the stack, keeping the database:
+### Step 4 — Confirm the database was populated
+
+The database is created, migrated and filled automatically. No action is
+required. Confirm it:
+
+```bash
+docker compose exec db psql -U submitta -d assignment_system -c "SELECT role, COUNT(*) FROM users GROUP BY role ORDER BY role;"
+```
+
+Expected:
+
+```
+  role   | count
+---------+-------
+ admin   |     1
+ teacher |     2
+ student |     3
+```
+
+Check the tables and assignments too:
+
+```bash
+docker compose exec db psql -U submitta -d assignment_system -c "SELECT COUNT(*) AS tables FROM information_schema.tables WHERE table_schema='public';"
+```
+
+```bash
+docker compose exec db psql -U submitta -d assignment_system -c "SELECT title, status FROM assignments;"
+```
+
+Expected: **18** tables and **4** assignments.
+
+### Step 5 — Confirm the API is responding
+
+```bash
+curl -s http://localhost:5062/health
+```
+
+Expected:
+
+```json
+{"status":"healthy","timestamp":"..."}
+```
+
+### Step 6 — Open the application
+
+| | |
+|---|---|
+| Application | <http://localhost:3000> |
+| Swagger UI | <http://localhost:5062/swagger> |
+
+### Step 7 — Sign in
+
+Password for every account: **`Demo@1234`**
+
+| Role | Email |
+|---|---|
+| Administrator | `admin@school.edu` |
+| Teacher | `sarah.ahmed@school.edu` |
+| Student | `nadia.islam@school.edu` |
+
+The sign-in page lists these; clicking one fills the form.
+
+### Stopping the stack
+
+Stop, keeping the data:
 
 ```bash
 docker compose down
 ```
 
-Stop and **discard the database**, returning to a clean slate:
+Stop and delete the database:
 
 ```bash
 docker compose down --volumes
 ```
 
-Rebuild one service after a code change:
+### Restarting the stack later
 
 ```bash
-docker compose up --build -d api
+docker compose up -d
 ```
 
-Open a psql session against the containerised database:
+### Rebuilding after a code change
 
 ```bash
-docker compose exec db psql -U submitta -d assignment_system
+docker compose up --build -d
 ```
 
-### 2.6 Running the test suite in Docker
+### Viewing logs
 
-The backend Dockerfile exposes a `test` stage, so the suite runs on the same SDK
-image the application is compiled with:
+```bash
+docker compose logs -f api
+```
+
+```bash
+docker compose logs -f web
+```
+
+### Running the tests
 
 ```bash
 docker build --target test ./backend
 ```
 
-Result:
+Expected: `Passed! - Failed: 0, Passed: 152, Skipped: 0, Total: 152`
 
-```
-Passed!  - Failed: 0, Passed: 152, Skipped: 0, Total: 152, Duration: 11 s
-```
+### If a port is already in use
 
-### 2.7 Image structure
-
-Both Dockerfiles are multi-stage. Build tooling is confined to the build stages
-and never reaches the published image.
-
-| Image | Base | Size | Contents |
-|---|---|---|---|
-| `submitta-api` | `mcr.microsoft.com/dotnet/aspnet:9.0` | 289 MB | Published assemblies only; no SDK, no source |
-| `submitta-web` | `node:22-alpine` | 219 MB | Next.js standalone output; no build toolchain, no dev dependencies |
-| `postgres:17-alpine` | official | 291 MB | Unmodified |
-
-Both application images run as a **non-root user** (`app` in the API image,
-`node` in the web image) and declare a `HEALTHCHECK`.
-
-The web image relies on `output: "standalone"` in `next.config.ts`, which emits
-a self-contained server carrying only the modules the traced build reaches.
-
-### 2.8 Switching to Production mode
-
-The stack defaults to `ASPNETCORE_ENVIRONMENT=Development`, which publishes
-Swagger and uses the development signing key committed in
-`appsettings.Development.json`. This keeps evaluation free of setup steps.
-
-For a production-shaped run, create a `.env` beside `docker-compose.yml`:
+Create a `.env` file in the repository root:
 
 ```bash
 cp .env.example .env
 ```
 
-Then set both values together — the API refuses to start outside Development
-without a signing key:
+Set alternative ports in it:
 
 ```ini
-ASPNETCORE_ENVIRONMENT=Production
-Jwt__Key=<output of: openssl rand -base64 48>
+WEB_PORT=3100
+API_PORT=5162
+DB_PORT=5533
 ```
 
-`.env` is git-ignored. Only `.env.example` is committed.
+Then:
+
+```bash
+docker compose up -d
+```
 
 ---
 
 ## 3. Running without Docker
 
-### 3.1 Prerequisites
+> Run every command from the **repository root** unless a step says otherwise.
+> This route needs **two terminals**: one for the API, one for the frontend.
 
-| Tool | Version | Verify with |
-|---|---|---|
-| .NET SDK | 9.0+ | `dotnet --version` |
-| Node.js | 20+ | `node --version` |
-| PostgreSQL | 14+ | `psql --version` |
-
-On macOS with [Homebrew](https://brew.sh):
+### Step 1 — Confirm the prerequisites
 
 ```bash
-brew install --cask dotnet-sdk && brew install node postgresql@16
+dotnet --version
 ```
+
+```bash
+node --version
+```
+
+```bash
+psql --version
+```
+
+Required: .NET SDK **9.0+**, Node.js **20+**, PostgreSQL **14+**.
+
+To install them on macOS:
+
+```bash
+brew install --cask dotnet-sdk
+```
+
+```bash
+brew install node postgresql@16
+```
+
+### Step 2 — Start PostgreSQL
 
 ```bash
 brew services start postgresql@16
 ```
 
-### 3.2 Create an empty database
+Confirm it is accepting connections:
 
-This is the only manual database step. The application creates every table
-itself on first run.
+```bash
+pg_isready
+```
+
+Expected: `/tmp:5432 - accepting connections`
+
+### Step 3 — Create an empty database
 
 ```bash
 createdb assignment_system
 ```
 
-### 3.3 Configure and start the API
+### Step 4 — Configure the API
 
 ```bash
 cp backend/.env.example backend/.env
 ```
 
-Edit `ConnectionStrings__DefaultConnection` in `backend/.env` so the host, user,
-password and database name match your PostgreSQL instance. Then:
+Open `backend/.env` and set `ConnectionStrings__DefaultConnection` to match your
+PostgreSQL.
+
+For a Homebrew install on macOS, the superuser is your own macOS username with
+no password:
+
+```ini
+ConnectionStrings__DefaultConnection=Host=localhost;Port=5432;Database=assignment_system;Username=YOUR_MACOS_USERNAME
+```
+
+Print your username with:
+
+```bash
+whoami
+```
+
+For a PostgreSQL with a password set:
+
+```ini
+ConnectionStrings__DefaultConnection=Host=localhost;Port=5432;Database=assignment_system;Username=postgres;Password=YOUR_PASSWORD
+```
+
+### Step 5 — Start the API — terminal 1
 
 ```bash
 dotnet run --project backend/src/AssignmentSystem.Api
 ```
 
-The API applies all migrations and seeds demo data before accepting requests.
-It listens on <http://localhost:5062>.
+Leave this running. It creates every table and fills the database on first
+start. Wait for these lines:
 
-### 3.4 Configure and start the frontend
+```
+[INF] Applying 6 pending migration(s): ...
+[INF] Row-Level Security enabled across the public schema (0 table(s) still unprotected).
+[INF] Seeding database…
+[INF] Seeded 6 User row(s).
+[INF] Seeding complete.
+[INF] Now listening on: http://localhost:5062
+```
 
-In a second terminal:
+### Step 6 — Confirm the database was populated — terminal 2
+
+```bash
+psql -d assignment_system -c "SELECT role, COUNT(*) FROM users GROUP BY role ORDER BY role;"
+```
+
+Expected:
+
+```
+  role   | count
+---------+-------
+ admin   |     1
+ teacher |     2
+ student |     3
+```
+
+```bash
+psql -d assignment_system -c "SELECT COUNT(*) AS tables FROM information_schema.tables WHERE table_schema='public';"
+```
+
+Expected: **18**.
+
+### Step 7 — Confirm the API is responding — terminal 2
+
+```bash
+curl -s http://localhost:5062/health
+```
+
+Expected:
+
+```json
+{"status":"healthy","timestamp":"..."}
+```
+
+### Step 8 — Configure the frontend — terminal 2
 
 ```bash
 cp frontend/.env.example frontend/.env.local
 ```
 
-```bash
-cd frontend && npm install && npm run dev
-```
+No edits are needed if the API is on its default port 5062.
 
-The application is served at <http://localhost:3000>.
-
-### 3.5 Production build of the frontend
+### Step 9 — Install frontend dependencies — terminal 2
 
 ```bash
-cd frontend && npm run build && npm run start
+cd frontend
 ```
+
+```bash
+npm install
+```
+
+### Step 10 — Start the frontend — terminal 2
+
+```bash
+npm run dev
+```
+
+Leave this running. Wait for:
+
+```
+✓ Ready in ...
+- Local: http://localhost:3000
+```
+
+### Step 11 — Open the application
+
+| | |
+|---|---|
+| Application | <http://localhost:3000> |
+| Swagger UI | <http://localhost:5062/swagger> |
+
+### Step 12 — Sign in
+
+Password for every account: **`Demo@1234`**
+
+| Role | Email |
+|---|---|
+| Administrator | `admin@school.edu` |
+| Teacher | `sarah.ahmed@school.edu` |
+| Student | `nadia.islam@school.edu` |
+
+### Stopping
+
+Press `Ctrl+C` in each terminal.
+
+### Restarting later
+
+Terminal 1:
+
+```bash
+dotnet run --project backend/src/AssignmentSystem.Api
+```
+
+Terminal 2:
+
+```bash
+cd frontend && npm run dev
+```
+
+### Starting over with a fresh database
+
+```bash
+dropdb assignment_system && createdb assignment_system
+```
+
+Then start the API again; it rebuilds and refills the database.
 
 ---
 
+## 3A. Populating the database from the SQL scripts
+
+Optional. Steps 3–5 above already create and fill the database. Use this only to
+build the database from the supplied SQL files instead.
+
+Both files are in `database/`. Run these from the **repository root**.
+
+### Step 1 — Create an empty database
+
+```bash
+createdb assignment_system
+```
+
+### Step 2 — Create the tables
+
+```bash
+psql -d assignment_system -f database/schema.sql
+```
+
+### Step 3 — Load the demonstration data
+
+```bash
+psql -d assignment_system -f database/seed.sql
+```
+
+### Step 4 — Confirm
+
+```bash
+psql -d assignment_system -c "SELECT COUNT(*) AS tables FROM information_schema.tables WHERE table_schema='public';"
+```
+
+```bash
+psql -d assignment_system -c "SELECT role, COUNT(*) FROM users GROUP BY role ORDER BY role;"
+```
+
+Expected: **18** tables, and 1 admin, 2 teachers, 3 students.
+
+Then continue from **Step 4 of Section 3** above. The API detects the schema as
+current, applies no migrations, and does not duplicate the loaded rows.
+
+### Loading the scripts into the Docker database instead
+
+```bash
+docker compose up -d db
+```
+
+```bash
+docker compose exec -T db psql -U submitta -d assignment_system < database/schema.sql
+```
+
+```bash
+docker compose exec -T db psql -U submitta -d assignment_system < database/seed.sql
+```
+
+---
 ## 4. Configuration reference
 
 Configuration is supplied through environment variables in all cases. No secret
@@ -365,6 +562,41 @@ The default database password is written into `docker-compose.yml` deliberately:
 it belongs to a database reachable only from inside the Compose network, and
 committing it keeps `docker compose up` free of prerequisites. Override it for
 any deployment that is not a local evaluation.
+
+### 4.4 Running the Docker stack in Production mode
+
+The stack defaults to `ASPNETCORE_ENVIRONMENT=Development`, which publishes
+Swagger and uses the development signing key committed in
+`appsettings.Development.json`. This keeps evaluation free of setup steps.
+
+For a production-shaped run, create a `.env` in the repository root:
+
+```bash
+cp .env.example .env
+```
+
+Generate a signing key:
+
+```bash
+openssl rand -base64 48
+```
+
+Set **both** values in `.env` — the API refuses to start outside Development
+without a signing key:
+
+```ini
+ASPNETCORE_ENVIRONMENT=Production
+Jwt__Key=PASTE_THE_GENERATED_KEY_HERE
+```
+
+Then restart:
+
+```bash
+docker compose up -d
+```
+
+Swagger is disabled in this mode. `.env` is git-ignored; only `.env.example` is
+committed.
 
 ---
 
@@ -1276,7 +1508,7 @@ DB_PORT=5533
 
 **The API container exits immediately in Production mode.**
 `Jwt__Key` is missing. The API refuses to start outside Development without a
-signing key — see [Section 2.8](#28-switching-to-production-mode).
+signing key — see [Section 4.4](#44-running-the-docker-stack-in-production-mode).
 
 **Stale data after a schema change.**
 The database volume persists across `docker compose down`. Discard it:
