@@ -158,10 +158,6 @@ public sealed class StudentService(
                     .OrderBy(c => c.Order)
                     .Select(c => new { c.Id, c.Order, c.Title, c.Description, c.MaxPoints })
                     .ToList(),
-                Attachments = a.Attachments
-                    .OrderBy(f => f.CreatedAt)
-                    .Select(f => new StudentAttachmentDto(f.Id, f.FileName, f.SizeBytes))
-                    .ToList(),
                 ClassName = a.ClassSubject.Class.Name,
                 ClassCode = a.ClassSubject.Class.Code,
                 SubjectName = a.ClassSubject.Subject.Name,
@@ -207,7 +203,6 @@ public sealed class StudentService(
                 c.Id, c.Order, c.Title, c.Description, c.MaxPoints,
                 scores.TryGetValue(c.Id, out var score) ? score.Points : null,
                 scores.TryGetValue(c.Id, out var withComment) ? withComment.Comment : null))],
-            assignment.Attachments,
             assignment.ClassName,
             assignment.ClassCode,
             assignment.SubjectName,

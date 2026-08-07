@@ -165,7 +165,6 @@ export interface SubjectOption {
 
 export interface AssignmentDto {
   gradingType: GradingType;
-  hasAttachments: boolean;
   id: string;
   title: string;
   classSubjectId: string;
@@ -199,20 +198,11 @@ export interface RubricCriterion {
   comment?: string | null;
 }
 
-export interface AssignmentAttachment {
-  id: string;
-  fileName: string;
-  contentType: string;
-  sizeBytes: number;
-  uploadedAt: string;
-}
-
 export interface AssignmentDetail extends Omit<AssignmentDto, "createdAt"> {
   description: string;
   descriptionJson: string | null;
   gradingType: GradingType;
   rubric: RubricCriterion[];
-  attachments: AssignmentAttachment[];
   createdByTeacherId: string;
   isPastDeadline: boolean;
   createdAt: string;
@@ -340,7 +330,6 @@ export interface StudentAssignmentDetail {
   descriptionJson: string | null;
   gradingType: GradingType;
   rubric: RubricCriterion[];
-  attachments: Array<{ id: string; fileName: string; sizeBytes: number }>;
   id: string;
   title: string;
   description: string;

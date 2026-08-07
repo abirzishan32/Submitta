@@ -1,0 +1,28 @@
+# ===========================================================================
+# Excluded from the web build context.
+# ===========================================================================
+
+# --- Secrets ---------------------------------------------------------------
+.env
+.env.*
+!.env.example
+
+# --- Installed and generated -----------------------------------------------
+# node_modules is restored inside the image by `npm ci` against the lockfile.
+# Copying the host's copy would both bloat the context and risk carrying
+# darwin/arm64 native binaries into a Linux image.
+node_modules/
+.next/
+out/
+build/
+*.tsbuildinfo
+
+# --- Docker's own files ----------------------------------------------------
+Dockerfile
+.dockerignore
+
+# --- Editors and OS --------------------------------------------------------
+.idea/
+.vscode/
+**/.DS_Store
+npm-debug.log*

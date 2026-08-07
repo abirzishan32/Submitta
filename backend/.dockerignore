@@ -1,0 +1,39 @@
+# ===========================================================================
+# Excluded from the API build context.
+#
+# Two jobs: keep secrets out of the image, and keep the context small enough
+# that the daemon is not handed a few hundred megabytes of build leftovers on
+# every build.
+# ===========================================================================
+
+# --- Secrets. Non-negotiable ------------------------------------------------
+# `.env` holds the real connection string and signing key. It is git-ignored,
+# but Docker does not read .gitignore — without this line it would be baked
+# into an image layer and readable by anyone who pulls it.
+.env
+.env.*
+!.env.example
+appsettings.Local.json
+appsettings.*.Local.json
+*.pfx
+
+# --- Build output ----------------------------------------------------------
+# Host artefacts are useless in the image and actively harmful: a macOS/arm64
+# obj/ directory confuses the restore inside a Linux container.
+**/bin/
+**/obj/
+**/TestResults/
+**/logs/
+**/*.trx
+**/coverage*/
+
+# --- Docker's own files ----------------------------------------------------
+Dockerfile
+.dockerignore
+
+# --- Editors and OS --------------------------------------------------------
+.vs/
+.idea/
+**/.DS_Store
+*.user
+*.suo

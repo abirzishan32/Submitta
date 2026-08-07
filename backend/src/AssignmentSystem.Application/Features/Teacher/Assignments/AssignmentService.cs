@@ -554,7 +554,6 @@ public sealed class AssignmentService(
             a.PublishedAt,
             a.AllowResubmission,
             a.AllowLateSubmission,
-            a.Attachments.Any(),
             a.CreatedByTeacher.FullName,
             a.Submissions.Count,
             a.Submissions.Count(s => s.Status == SubmissionStatus.Graded),
@@ -584,13 +583,6 @@ public sealed class AssignmentService(
                 .OrderBy(c => c.Order)
                 .Select(c => new RubricCriterionDto(
                     c.Id, c.Order, c.Title, c.Description, c.MaxPoints))
-                .ToList(),
-            // Deliberately without Content: the bytes are only ever selected by
-            // the download endpoint, never by a detail read.
-            a.Attachments
-                .OrderBy(f => f.CreatedAt)
-                .Select(f => new AttachmentDto(
-                    f.Id, f.FileName, f.ContentType, f.SizeBytes, f.CreatedAt))
                 .ToList(),
             a.Status,
             a.PublishedAt,

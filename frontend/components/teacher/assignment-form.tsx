@@ -23,7 +23,6 @@ import { FormField, CheckboxField } from "@/components/common/form-field";
 import { Label } from "@/components/ui/label";
 import { RichText } from "@/components/editor/rich-text";
 import { RubricBuilder, type RubricRow } from "./rubric-builder";
-import { QuestionFiles, type AssignmentFile } from "./question-files";
 import { cn } from "@/lib/utils";
 import { FadeInUp } from "@/components/motion/primitives";
 import { apiClient, ClientApiError } from "@/lib/api/client";
@@ -90,8 +89,6 @@ export function AssignmentForm({
     })) ?? [],
   );
 
-  const [files, setFiles] = useState<AssignmentFile[]>(assignment?.attachments ?? []);
-
   // Both forms of the brief are kept: the rich document for display, and the
   // flattened text that lists, search and older clients read.
   const [brief, setBrief] = useState({
@@ -140,14 +137,10 @@ export function AssignmentForm({
 
     const deadline = new Date(values.deadline).toISOString();
 
-    // A brief can be written, attached as a PDF, or both — but an assignment
-    // with neither tells the student nothing.
     const written = brief.text.trim();
 
-    if (!written && files.length === 0) {
-      setFormError(
-        "Add a brief or attach a question paper — an assignment needs one or the other.",
-      );
+    if (!written) {
+      setFormError("Write the brief — an assignment with no question tells the student nothing.");
       return;
     }
 
@@ -176,9 +169,7 @@ export function AssignmentForm({
       if (isEdit && assignment) {
         await apiClient.put(`/api/v1/assignments/${assignment.id}`, {
           title: values.title,
-          // The attached-PDF case still needs a line of text, because lists and
-          // search read this field.
-          description: written || `See the attached question paper.`,
+          description: written,
           deadline,
           maxMarks: values.maxMarks,
           allowResubmission: values.allowResubmission,
@@ -191,7 +182,7 @@ export function AssignmentForm({
       } else {
         const created = await apiClient.post<AssignmentDetail>("/api/v1/assignments", {
           title: values.title,
-          description: written || `See the attached question paper.`,
+          description: written,
           classSubjectId: values.classSubjectId,
           deadline,
           maxMarks: values.maxMarks,
@@ -274,9 +265,9 @@ export function AssignmentForm({
               <div>
                 <Label>{t.assignments.description}</Label>
                 <p className="pt-0.5 text-xs text-muted-foreground text-pretty">
-                  Write the brief here — headings, lists, tables and code all
-                  work. Press <kbd className="rounded border border-border bg-muted px-1 text-[0.6875rem]">/</kbd>{" "}
-                  for commands. Or leave it empty and attach a PDF below.
+                  Headings, lists, tables and code all work. Press{" "}
+                  <kbd className="rounded border border-border bg-muted px-1 text-[0.6875rem]">/</kbd>{" "}
+                  for commands.
                 </p>
               </div>
 
@@ -289,23 +280,6 @@ export function AssignmentForm({
                 onChange={(json, text) => setBrief({ json, text })}
               />
             </div>
-
-            {/* Only once the assignment exists: a file has to belong to
-                something, so offering this on a blank form would promise
-                what cannot work. */}
-            {isEdit && assignment ? (
-              <QuestionFiles
-                assignmentId={assignment.id}
-                files={files}
-                onChange={setFiles}
-              />
-            ) : (
-              <p className="rounded-lg border border-dashed border-border px-4 py-3 text-xs text-muted-foreground text-pretty">
-                Want to attach the question as a PDF instead? Save this
-                assignment first — a file has to belong to something — then add
-                it from the edit screen.
-              </p>
-            )}
 
             {/* The offering cannot change after creation: existing submissions
                 belong to the class it was set for. */}

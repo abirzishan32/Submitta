@@ -19,7 +19,6 @@ public sealed record AssignmentDto(
     DateTimeOffset? PublishedAt,
     bool AllowResubmission,
     bool AllowLateSubmission,
-    bool HasAttachments,
     string CreatedByTeacherName,
     int SubmissionCount,
     int GradedCount,
@@ -41,7 +40,6 @@ public sealed record AssignmentDetailDto(
     decimal MaxMarks,
     GradingType GradingType,
     IReadOnlyList<RubricCriterionDto> Rubric,
-    IReadOnlyList<AttachmentDto> Attachments,
     AssignmentStatus Status,
     DateTimeOffset? PublishedAt,
     bool AllowResubmission,
@@ -59,6 +57,10 @@ public sealed record AssignmentDetailDto(
 /// Creates an assignment. Set <c>PublishImmediately</c> to publish on creation
 /// rather than saving a draft — publishing additionally requires the deadline to
 /// be in the future.
+///
+/// <c>DescriptionJson</c> carries the brief as written in the editor and is
+/// optional; <c>Description</c> is the same text flattened. <c>Rubric</c> is
+/// required when <c>GradingType</c> is Rubric and ignored otherwise.
 /// </summary>
 public sealed record CreateAssignmentRequest(
     string Title,
@@ -69,10 +71,8 @@ public sealed record CreateAssignmentRequest(
     bool AllowResubmission,
     bool AllowLateSubmission,
     bool PublishImmediately,
-    /// <summary>The brief as written in the editor. Optional.</summary>
     string? DescriptionJson = null,
     GradingType GradingType = GradingType.Points,
-    /// <summary>Required when <c>GradingType</c> is Rubric, ignored otherwise.</summary>
     IReadOnlyList<RubricCriterionInput>? Rubric = null);
 
 public sealed record UpdateAssignmentRequest(
@@ -100,13 +100,6 @@ public sealed record RubricCriterionDto(
     string? Description,
     decimal MaxPoints);
 
-/// <summary>An attached file, without its bytes.</summary>
-public sealed record AttachmentDto(
-    Guid Id,
-    string FileName,
-    string ContentType,
-    long SizeBytes,
-    DateTimeOffset UploadedAt);
 
 /// <summary>Filters for a teacher's assignment list.</summary>
 public sealed class AssignmentListQuery : PaginationQuery

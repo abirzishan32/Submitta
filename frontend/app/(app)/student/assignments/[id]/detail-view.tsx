@@ -11,7 +11,6 @@ import {
   CalendarClock,
   ExternalLink,
   Info,
-  FileText,
   Loader2,
   Lock,
   MessageSquare,
@@ -161,32 +160,6 @@ export function AssignmentDetailView({
                 fallback={assignment.description}
               />
             </div>
-
-            {assignment.attachments.length > 0 ? (
-              <div className="space-y-1.5">
-                <h2 className="text-sm font-semibold">Question paper</h2>
-                <ul className="space-y-1.5">
-                  {assignment.attachments.map((file) => (
-                    <li key={file.id}>
-                      <a
-                        href={`/api/proxy/api/v1/assignments/${assignment.id}/attachments/${file.id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2.5 rounded-lg border border-border bg-card px-3 py-2.5 transition-colors hover:bg-accent/50"
-                      >
-                        <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-primary">
-                          {file.fileName}
-                        </span>
-                        <span className="shrink-0 text-xs text-muted-foreground tabular">
-                          {Math.max(1, Math.round(file.sizeBytes / 1024))} KB
-                        </span>
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
 
             {/* Shown before they start, not only after marking — a rubric is
                 only useful if the student knows what it asks for. */}

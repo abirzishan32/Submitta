@@ -19,9 +19,7 @@ namespace AssignmentSystem.Api.Controllers;
 [Authorize(Policy = Policies.AdminOrTeacher)]
 [Route("api/v{version:apiVersion}/assignments")]
 [Produces("application/json")]
-public sealed class AssignmentsController(
-    IAssignmentService assignments,
-    IAttachmentService attachments) : ControllerBase
+public sealed class AssignmentsController(IAssignmentService assignments) : ControllerBase
 {
     /// <summary>Lists the class-subject offerings you may create assignments for.</summary>
     /// <remarks>
@@ -123,58 +121,5 @@ public sealed class AssignmentsController(
     {
         await assignments.DeleteAsync(id, ct);
         return Ok(ApiResponse.Ok("Assignment deleted."));
-    }
-
-    // -----------------------------------------------------------------------
-    // Attachments — the question paper, when a teacher would rather upload than
-    // type. Multipart rather than JSON, so a PDF is not base64-inflated by a
-    // third on the way up.
-    // -----------------------------------------------------------------------
-
-    /// <summary>Attaches a PDF to an assignment.</summary>
-    /// <remarks>
-    /// PDF only, verified by reading the file's first bytes rather than trusting
-    /// the declared content type or the extension — both come from the caller.
-    /// Capped at 10 MB and 5 files per assignment.
-    /// </remarks>
-    /// <response code="200">Stored.</response>
-    /// <response code="422">Not a PDF, too large, or the assignment is full.</response>
-    [HttpPost("{id:guid}/attachments")]
-    [RequestSizeLimit(AttachmentService.MaxSizeBytes + 4096)]
-    [ProducesResponseType(typeof(ApiResponse<AttachmentDto>), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status422UnprocessableEntity)]
-    public async Task<IActionResult> Upload(Guid id, IFormFile file, CancellationToken ct)
-    {
-        if (file is null || file.Length == 0)
-        {
-            return BadRequest(ApiResponse.Fail("Choose a PDF to upload."));
-        }
-
-        if (file.Length > AttachmentService.MaxSizeBytes)
-        {
-            // Checked before reading, so an oversized file is refused rather
-            // than buffered into memory first.
-            return UnprocessableEntity(ApiResponse.Fail(
-                $"That file is larger than the {AttachmentService.MaxSizeBytes / 1024 / 1024} MB limit."));
-        }
-
-        using var buffer = new MemoryStream();
-        await file.CopyToAsync(buffer, ct);
-
-        var result = await attachments.UploadAsync(
-            id,
-            new AttachmentUpload(file.FileName, file.ContentType, buffer.ToArray()),
-            ct);
-
-        return Ok(ApiResponse<AttachmentDto>.Ok(result, "File attached."));
-    }
-
-    /// <summary>Removes an attached file.</summary>
-    [HttpDelete("{id:guid}/attachments/{attachmentId:guid}")]
-    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
-    public async Task<IActionResult> RemoveAttachment(Guid id, Guid attachmentId, CancellationToken ct)
-    {
-        await attachments.DeleteAsync(id, attachmentId, ct);
-        return Ok(ApiResponse.Ok("File removed."));
     }
 }

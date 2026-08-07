@@ -41,12 +41,6 @@ public sealed record StudentRubricCriterionDto(
     decimal? Points,
     string? Comment);
 
-/// <summary>A file the teacher attached, usually the question paper.</summary>
-public sealed record StudentAttachmentDto(
-    Guid Id,
-    string FileName,
-    long SizeBytes);
-
 /// <summary>
 /// Full assignment detail plus the student's own submission and feedback.
 ///
@@ -62,7 +56,6 @@ public sealed record StudentAssignmentDetailDto(
     string? DescriptionJson,
     GradingType GradingType,
     IReadOnlyList<StudentRubricCriterionDto> Rubric,
-    IReadOnlyList<StudentAttachmentDto> Attachments,
     string ClassName,
     string ClassCode,
     string SubjectName,

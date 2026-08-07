@@ -29,7 +29,6 @@ public interface IAppDbContext
     DbSet<Notification> Notifications { get; }
     DbSet<SubmissionCriterionScore> SubmissionCriterionScores { get; }
     DbSet<RubricCriterion> RubricCriteria { get; }
-    DbSet<AssignmentAttachment> AssignmentAttachments { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

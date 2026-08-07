@@ -1,832 +1,1040 @@
-# Submitta — Assignment & Submission Management
+# Submitta — Assignment & Submission Management System
 
-A role-based system for schools and colleges: teachers set coursework for a
-class and subject, students submit and revise it, and teachers return marks and
-feedback. Built for the OnnoRokom Projukti Assistant Software Engineer
-assignment.
+A role-based web application for managing coursework in schools and colleges.
+Teachers set assignments against a class and subject, students submit and revise
+their work, and teachers return marks and feedback. Administrators manage users,
+classes, subjects and teaching allocations.
 
-**ASP.NET Core 9 Web API · PostgreSQL · Next.js 16 · TypeScript · xUnit**
+Developed as the technical assignment for the Assistant Software Engineer
+position at OnnoRokom Projukti Limited.
+
+**ASP.NET Core 9 · PostgreSQL 17 · Next.js 16 · TypeScript · Docker · xUnit**
 
 ---
 
 ## Contents
 
-- [Quick start](#quick-start)
-- [Demo credentials](#demo-credentials)
-- [Accounts and authentication](#accounts-and-authentication)
-- [Main features](#main-features)
-- [Setting an assignment](#setting-an-assignment)
-- [The writing editor and replay](#the-writing-editor-and-replay)
-- [Notifications](#notifications)
-- [Database security](#database-security)
-- [Technology stack](#technology-stack)
-- [Architecture](#architecture)
-- [Data model](#data-model)
-- [Project structure](#project-structure)
-- [Setup on macOS](#setup-on-macos)
-- [Database setup](#database-setup)
-- [Running the backend](#running-the-backend)
-- [Running the frontend](#running-the-frontend)
-- [Running the tests](#running-the-tests)
-- [API](#api)
-- [Troubleshooting](#troubleshooting)
-- [Assumptions](#assumptions)
-- [Known limitations](#known-limitations)
-- [Future improvements](#future-improvements)
+**Getting started**
+1. [Overview](#1-overview)
+2. [Running with Docker](#2-running-with-docker)
+3. [Running without Docker](#3-running-without-docker)
+4. [Configuration reference](#4-configuration-reference)
+5. [Demo credentials](#5-demo-credentials)
+
+**Design**
+
+6. [Architecture](#6-architecture)
+7. [Data model](#7-data-model)
+8. [Technology stack](#8-technology-stack)
+9. [Project structure](#9-project-structure)
+
+**Functionality**
+
+10. [Functional scope by role](#10-functional-scope-by-role)
+11. [Authorization and business rules](#11-authorization-and-business-rules)
+12. [Assignment authoring and grading](#12-assignment-authoring-and-grading)
+13. [The writing editor and replay](#13-the-writing-editor-and-replay)
+14. [Notifications](#14-notifications)
+
+**Operations**
+
+15. [Database and migrations](#15-database-and-migrations)
+16. [Database security](#16-database-security)
+17. [Testing](#17-testing)
+18. [API reference](#18-api-reference)
+19. [Troubleshooting](#19-troubleshooting)
+
+**Appendices**
+
+20. [Design assumptions](#20-design-assumptions)
+21. [Known limitations](#21-known-limitations)
+22. [Future work](#22-future-work)
 
 ---
 
-## Quick start
+## 1. Overview
 
-You need [.NET 9 SDK](https://dotnet.microsoft.com/download),
-[Node.js 20+](https://nodejs.org) and a running **PostgreSQL 14+**.
+The system implements three roles with distinct capabilities, enforced entirely
+on the server:
 
-**1. Create an empty database.** That is the only database work required — the
-application creates every table itself on first run.
+| Role | Responsibility |
+|---|---|
+| **Administrator** | User accounts, classes, subjects, teaching allocations, enrolment, system settings |
+| **Teacher** | Authoring assignments for their own allocations, reviewing submissions, awarding marks and feedback |
+| **Student** | Viewing published assignments, submitting and revising work, viewing marks and feedback |
+
+The repository contains the complete deliverable: backend API, frontend
+application, database migrations, a standalone schema script, seed data, unit
+tests and container configuration. No table needs to be created by hand.
+
+### Deployment options
+
+| Method | Prerequisites | Section |
+|---|---|---|
+| **Docker Compose** (recommended) | Docker Desktop | [Section 2](#2-running-with-docker) |
+| **Local toolchain** | .NET 9 SDK, Node.js 20+, PostgreSQL 14+ | [Section 3](#3-running-without-docker) |
+
+---
+
+## 2. Running with Docker
+
+### 2.1 Prerequisites
+
+Docker Desktop, including Compose v2. Verified against Docker 27.5.1 and Compose
+v2.32.4 on Apple Silicon.
+
+```bash
+docker --version && docker compose version
+```
+
+Nothing else is required. The .NET SDK, Node.js and PostgreSQL are all supplied
+by the images.
+
+### 2.2 Starting the stack
+
+From the repository root:
+
+```bash
+docker compose up --build
+```
+
+The first build takes several minutes while the base images are pulled and the
+two applications are compiled. Subsequent builds reuse the layer cache.
+
+Add `-d` to run detached:
+
+```bash
+docker compose up --build -d
+```
+
+### 2.3 Service endpoints
+
+| Service | URL | Notes |
+|---|---|---|
+| **Web application** | <http://localhost:3000> | The application itself |
+| **API** | <http://localhost:5062> | Direct access, not required for normal use |
+| **Swagger UI** | <http://localhost:5062/swagger> | Available in Development mode |
+| **Health check** | <http://localhost:5062/health> | Anonymous, for probes |
+| **PostgreSQL** | `localhost:5433` | Port 5433 avoids collision with a host PostgreSQL |
+
+Sign in with any account from [Section 5](#5-demo-credentials).
+
+### 2.4 What happens on first start
+
+Startup is ordered by health checks rather than by fixed delays, so the API
+never starts against a database that is still initialising.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as docker compose
+    participant D as db (PostgreSQL 17)
+    participant A as api (ASP.NET Core 9)
+    participant W as web (Next.js 16)
+
+    C->>D: start container
+    D-->>C: pg_isready → healthy
+    C->>A: start container (gated on db healthy)
+    A->>D: apply 6 EF Core migrations
+    A->>D: enable Row-Level Security on every table
+    A->>D: seed demo users, classes, assignments
+    A-->>C: GET /health → healthy
+    C->>W: start container (gated on api healthy)
+    W-->>C: GET /login → healthy
+```
+
+Verified startup log from a clean volume:
+
+```
+[INF] Applying 6 pending migration(s): InitialSchema, RichEditorAndReplay,
+      Notifications, EnableRowLevelSecurity, AssignmentAuthoringAndGrading,
+      RemoveAssignmentAttachments
+[INF] Row-Level Security enabled across the public schema (0 table(s) still unprotected).
+[INF] Seeding database…
+[INF] Seeded 6 User row(s).
+[INF] Seeded 4 Assignment row(s).
+[INF] Seeding complete.
+[INF] Now listening on: http://[::]:8080
+```
+
+### 2.5 Common operations
+
+Check status — all three services should report `healthy`:
+
+```bash
+docker compose ps
+```
+
+Follow logs for one service:
+
+```bash
+docker compose logs -f api
+```
+
+Stop the stack, keeping the database:
+
+```bash
+docker compose down
+```
+
+Stop and **discard the database**, returning to a clean slate:
+
+```bash
+docker compose down --volumes
+```
+
+Rebuild one service after a code change:
+
+```bash
+docker compose up --build -d api
+```
+
+Open a psql session against the containerised database:
+
+```bash
+docker compose exec db psql -U submitta -d assignment_system
+```
+
+### 2.6 Running the test suite in Docker
+
+The backend Dockerfile exposes a `test` stage, so the suite runs on the same SDK
+image the application is compiled with:
+
+```bash
+docker build --target test ./backend
+```
+
+Result:
+
+```
+Passed!  - Failed: 0, Passed: 152, Skipped: 0, Total: 152, Duration: 11 s
+```
+
+### 2.7 Image structure
+
+Both Dockerfiles are multi-stage. Build tooling is confined to the build stages
+and never reaches the published image.
+
+| Image | Base | Size | Contents |
+|---|---|---|---|
+| `submitta-api` | `mcr.microsoft.com/dotnet/aspnet:9.0` | 289 MB | Published assemblies only; no SDK, no source |
+| `submitta-web` | `node:22-alpine` | 219 MB | Next.js standalone output; no build toolchain, no dev dependencies |
+| `postgres:17-alpine` | official | 291 MB | Unmodified |
+
+Both application images run as a **non-root user** (`app` in the API image,
+`node` in the web image) and declare a `HEALTHCHECK`.
+
+The web image relies on `output: "standalone"` in `next.config.ts`, which emits
+a self-contained server carrying only the modules the traced build reaches.
+
+### 2.8 Switching to Production mode
+
+The stack defaults to `ASPNETCORE_ENVIRONMENT=Development`, which publishes
+Swagger and uses the development signing key committed in
+`appsettings.Development.json`. This keeps evaluation free of setup steps.
+
+For a production-shaped run, create a `.env` beside `docker-compose.yml`:
+
+```bash
+cp .env.example .env
+```
+
+Then set both values together — the API refuses to start outside Development
+without a signing key:
+
+```ini
+ASPNETCORE_ENVIRONMENT=Production
+Jwt__Key=<output of: openssl rand -base64 48>
+```
+
+`.env` is git-ignored. Only `.env.example` is committed.
+
+---
+
+## 3. Running without Docker
+
+### 3.1 Prerequisites
+
+| Tool | Version | Verify with |
+|---|---|---|
+| .NET SDK | 9.0+ | `dotnet --version` |
+| Node.js | 20+ | `node --version` |
+| PostgreSQL | 14+ | `psql --version` |
+
+On macOS with [Homebrew](https://brew.sh):
+
+```bash
+brew install --cask dotnet-sdk && brew install node postgresql@16
+```
+
+```bash
+brew services start postgresql@16
+```
+
+### 3.2 Create an empty database
+
+This is the only manual database step. The application creates every table
+itself on first run.
 
 ```bash
 createdb assignment_system
 ```
 
-**2. Point the API at it.**
+### 3.3 Configure and start the API
 
 ```bash
 cp backend/.env.example backend/.env
 ```
 
-Then edit one line in `backend/.env` — `ConnectionStrings__DefaultConnection` —
-so the username, password and database name match your PostgreSQL.
-
-**3. Start the API.** It applies every migration and seeds the demo data before
-serving a request.
+Edit `ConnectionStrings__DefaultConnection` in `backend/.env` so the host, user,
+password and database name match your PostgreSQL instance. Then:
 
 ```bash
 dotnet run --project backend/src/AssignmentSystem.Api
 ```
 
-**4. Start the frontend**, in a second terminal.
+The API applies all migrations and seeds demo data before accepting requests.
+It listens on <http://localhost:5062>.
+
+### 3.4 Configure and start the frontend
+
+In a second terminal:
 
 ```bash
-cd frontend
-cp .env.example .env.local
-npm install
-npm run dev
+cp frontend/.env.example frontend/.env.local
 ```
 
-| | |
-|---|---|
-| **Application** | <http://localhost:3000> |
-| **API (Swagger)** | <http://localhost:5062/swagger> |
+```bash
+cd frontend && npm install && npm run dev
+```
 
-Sign in with any account below — the sign-in page lists them, and one click
-fills the form. Or create your own account from **Create an account**.
+The application is served at <http://localhost:3000>.
+
+### 3.5 Production build of the frontend
+
+```bash
+cd frontend && npm run build && npm run start
+```
 
 ---
 
-## Demo credentials
+## 4. Configuration reference
 
-All accounts share the password **`Demo@1234`**.
+Configuration is supplied through environment variables in all cases. No secret
+is committed; every `.env` file is git-ignored and accompanied by a
+`.env.example` showing the required keys with placeholder values.
+
+| File | Applies to | Committed |
+|---|---|---|
+| `.env.example` → `.env` | Docker Compose stack | Example only |
+| `backend/.env.example` → `backend/.env` | `dotnet run` | Example only |
+| `frontend/.env.example` → `frontend/.env.local` | `npm run dev` | Example only |
+
+### 4.1 Backend variables
+
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `ConnectionStrings__DefaultConnection` | Yes | — | PostgreSQL connection. URI and keyword forms both accepted |
+| `ASPNETCORE_ENVIRONMENT` | No | `Production` | `Development` enables Swagger and the development signing key |
+| `Jwt__Key` | Outside Development | — | HMAC-SHA256 signing key, minimum 32 characters |
+| `Jwt__AccessTokenMinutes` | No | `15` | Access token lifetime |
+| `Jwt__RefreshTokenDays` | No | `7` | Refresh token lifetime |
+| `Cors__AllowedOrigins__0` | No | `http://localhost:3000` | Permitted browser origin |
+| `Seed__Enabled` | No | `true` | Whether demo data is seeded |
+| `Seed__DefaultPassword` | No | `Demo@1234` | Password given to seeded accounts |
+
+TLS mode is derived from the host: disabled for loopback and single-label
+hostnames such as a Compose service name, required for anything fully qualified.
+Append `?sslmode=…` to override.
+
+### 4.2 Frontend variables
+
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `API_BASE_URL` | No | `http://localhost:5062` | API address, read **server-side only** |
+
+Under Compose this is set to `http://api:8080`, the internal service address.
+The browser never uses this value; see [Section 6.3](#63-frontend-request-flow).
+
+### 4.3 Compose-only variables
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `WEB_PORT` | `3000` | Host port for the web application |
+| `API_PORT` | `5062` | Host port for the API |
+| `DB_PORT` | `5433` | Host port for PostgreSQL |
+| `POSTGRES_PASSWORD` | `submitta_local_only` | Password for the containerised database |
+
+The default database password is written into `docker-compose.yml` deliberately:
+it belongs to a database reachable only from inside the Compose network, and
+committing it keeps `docker compose up` free of prerequisites. Override it for
+any deployment that is not a local evaluation.
+
+---
+
+## 5. Demo credentials
+
+All seeded accounts share the password **`Demo@1234`**. The sign-in page lists
+them and fills the form on click.
+
+### 5.1 Primary accounts
 
 | Role | Email | Password |
 |---|---|---|
-| **Admin** | `admin@school.edu` | `Demo@1234` |
+| **Administrator** | `admin@school.edu` | `Demo@1234` |
 | **Teacher** | `sarah.ahmed@school.edu` | `Demo@1234` |
 | **Student** | `nadia.islam@school.edu` | `Demo@1234` |
 
-Three more accounts exist, and they are worth using — the seed data is built to
-demonstrate the access rules rather than just to fill tables:
+### 5.2 Additional accounts
 
-| Email | Why it is there |
-|---|---|
-| `rafiq.hasan@school.edu` | A **second teacher**, with a class Sarah does not teach. Sign in as Sarah and you cannot see or touch Rafiq's assignment — that is the authorization boundary, demonstrable in the UI. |
-| `tanvir.rahman@school.edu` | A student whose work is **already graded** (85/100 with feedback), so the marked state is visible without grading anything first. |
-| `mim.chowdhury@school.edu` | A student in the college course, whose assignment is **past its deadline but accepts late work**. |
+The seed data is constructed to demonstrate the access rules rather than merely
+to populate tables.
 
-The seeded assignments likewise cover each state: a draft (invisible to
-students), an open assignment, one due shortly, and one past its deadline.
-
-> These are throwaway demo credentials, published deliberately. Real secrets live
-> in `backend/.env`, which is git-ignored; only `.env.example` is committed.
-
----
-
-## Accounts and authentication
-
-### Creating an account
-
-**Create an account** on the sign-in page opens a real sign-up form. It is not a
-demo shortcut — it writes a user, hashes the password with BCrypt, and starts a
-session.
-
-Who may register, and on what terms, follows from what each role can reach:
-
-| Role | Self-registration |
-|---|---|
-| **Student** | Open. Signed in immediately. May pick a class during sign-up, and then sees its coursework at once; an administrator can change the enrolment later. |
-| **Teacher** | Open, but the account is created **deactivated**. Being a teacher grants access to other people's work and the power to award marks, so the claim is approved by an administrator before it grants anything. |
-| **Admin** | Never. An administrator account is only ever created by another administrator. |
-
-A pending teacher who tries to sign in is told their account is awaiting
-approval — not "invalid email or password". The generic message guards the
-enumeration boundary, and that boundary is the password: someone who has already
-supplied the right password has proved the account is theirs, so withholding the
-reason only sends them hunting for a typo that is not there.
-
-An administrator approves a teacher from **Users** → the account → activate.
-
-### Turning registration off
-
-Three seeded application settings control it, editable under **Settings**:
-
-| Key | Default | Effect |
+| Email | Role | Demonstrates |
 |---|---|---|
-| `auth.allow_self_registration` | `true` | Master switch. When off, the sign-up form refuses and the sign-in page stops linking to it. |
-| `auth.allow_teacher_registration` | `true` | Whether the form offers the teacher role at all. |
-| `auth.teacher_requires_approval` | `true` | Whether new teacher accounts start deactivated. |
+| `rafiq.hasan@school.edu` | Teacher | A second teacher with a class Sarah does not teach. Signed in as Sarah, Rafiq's assignment is not reachable — the authorization boundary is observable in the UI |
+| `tanvir.rahman@school.edu` | Student | Work already graded at 85/100 with feedback, so the marked state is visible without grading anything first |
+| `mim.chowdhury@school.edu` | Student | Enrolled in the college course, with an assignment past its deadline that still accepts late work |
 
-If any of these rows is missing, the code treats it as **off**. A missing setting
-must never be the reason someone gets an account they should not have.
+The seeded assignments cover each lifecycle state: a draft invisible to
+students, an open assignment, one due shortly, and one past its deadline.
 
-### How sessions work
-
-- Passwords are hashed with **BCrypt** at work factor 12, never stored or logged
-- Sign-in returns a short-lived **access token** and a longer-lived **refresh
-  token**; the refresh token is stored only as a SHA-256 hash
-- Refresh **rotates** the token. Presenting an already-rotated one is treated as
-  a replay and revokes every session for that user
-- The browser never holds a token: they live in **httpOnly cookies** set by a
-  Next.js route handler, and client components reach the API through a
-  server-side proxy that attaches the token for them
-- Changing a password revokes every existing session
-- Sign-in, registration and refresh are rate limited to ten attempts per minute
-  per IP
+> These are throwaway demonstration credentials, published deliberately. Real
+> secrets are supplied through git-ignored `.env` files.
 
 ---
 
-## Main features
+## 6. Architecture
 
-### Admin
-- Create, edit, activate/deactivate and delete user accounts; reset a password
-  (which also signs that account out everywhere)
-- Manage classes/courses and subjects
-- Decide which subjects a class is taught, and assign teachers to them
-- Enrol students individually or several at once
-- Approve teacher accounts created through sign-up
-- Manage application-level settings, including whether registration is open
-- Read every assignment and submission in the system, from **Assignments** and
-  **Submissions**
+### 6.1 Container topology
 
-### Teacher
-- Create, update and delete assignments for their own classes
-- Write the brief in a rich editor, or attach the question as a PDF
-- Choose how it is marked: points, percentage, pass/fail or a rubric they write
-- Set title, description, deadline and maximum marks
-- Keep work as a draft, or publish it
-- Archive work instead of deleting it once students have submitted
-- Review submissions, and see which enrolled students have *not* submitted
-- Award marks with feedback, and change a submission's status
+```mermaid
+flowchart LR
+    B["Browser"]
 
-### Student
-- See published assignments for the classes they are enrolled in
-- View assignment details and deadline
-- Write the answer in a rich document editor (see [The writing editor](#the-writing-editor-and-replay))
-- Attach an optional link alongside the answer
-- Revise a submission before the deadline, where the assignment allows it
-- View submission status, marks and teacher feedback
+    subgraph host["Host machine"]
+        subgraph net["Docker network — submitta_default"]
+            W["<b>web</b><br/>Next.js 16<br/>container port 3000"]
+            A["<b>api</b><br/>ASP.NET Core 9<br/>container port 8080"]
+            D[("<b>db</b><br/>PostgreSQL 17<br/>container port 5432")]
+            V[["db-data<br/>named volume"]]
+        end
+    end
 
-### Throughout
-- **Live notifications** — a bell that updates without a refresh, covering new
-  assignments, approaching deadlines, submissions and marks
-- **Self-registration** for students and teachers, with administrator approval
-  for teachers — see [Accounts and authentication](#accounts-and-authentication)
-- **JWT authentication** with refresh-token rotation and reuse detection
-- **Role-based authorization** enforced server-side on every request
-- **English / Bangla** interface, including Bengali numerals and dates
-- **Light / dark theme** following the system setting by default
-- Paging, search, sorting and filtering on every list
-- Responsive layout, keyboard-navigable, with loading and empty states
+    B -->|"localhost:3000"| W
+    W -->|"http://api:8080<br/>server-side, bearer token attached"| A
+    A -->|"TCP, SSL disabled on internal network"| D
+    D --- V
 
-### The rules that matter
+    B -.->|"localhost:5062 — direct API and Swagger"| A
+    B -.->|"localhost:5433 — psql inspection"| D
 
-Role membership is only half the story — most of the real rules depend on data,
-not on a role name:
+    classDef svc fill:#1e3a5f,stroke:#4a90d9,color:#fff
+    classDef store fill:#3d2f5c,stroke:#9b7fd4,color:#fff
+    class W,A svc
+    class D,V store
+```
 
-- A teacher can only reach offerings they are assigned to. Reading another
-  teacher's assignment returns **404, not 403** — confirming that it exists is
-  itself a disclosure.
-- Students never see drafts, and never see another student's submission.
-- One submission per student per assignment, enforced by a unique index as well
-  as a service check, so two concurrent requests cannot both slip through.
-- After the deadline, a first submission is accepted only if the assignment
-  allows late work — and is then flagged. Lateness is stamped at submission
-  time, so moving the deadline afterwards cannot make anyone retroactively late.
-- Editing an answer requires being before the deadline, ungraded, and either
-  permitted by the assignment or explicitly returned for revision. The deadline
-  always wins.
-- Marks must fall between zero and the assignment's maximum, and that maximum
-  cannot later drop below marks already awarded.
-- Work that has submissions can be archived but not deleted or unpublished, so
-  no student's marks are ever hidden or destroyed.
-- The last active administrator cannot be deactivated or deleted.
+Solid arrows are the normal request path. Dotted arrows are published ports for
+inspection and are not used by the application.
 
-All of the above are covered by tests — see [Running the tests](#running-the-tests).
+### 6.2 Backend — Clean Architecture
 
----
+Project references point inward only, so business rules never depend on ASP.NET
+Core or EF Core and can be tested without a host or a database.
 
-## Setting an assignment
+```mermaid
+flowchart RL
+    Api["<b>Api</b><br/>controllers, middleware,<br/>composition root"]
+    Inf["<b>Infrastructure</b><br/>EF Core, migrations, seeding,<br/>BCrypt, JWT issuance"]
+    App["<b>Application</b><br/>DTOs, services, validators,<br/>IAccessControl, IAppDbContext"]
+    Dom["<b>Domain</b><br/>entities, enums,<br/>domain exceptions"]
 
-### Writing the brief
+    Api --> Inf --> App --> Dom
+    Api --> App
 
-The brief is written in the **same block editor students answer in** —
-headings, lists, tables, quotes, callouts, highlighted code, a `/` command
-palette. Students see it rendered by the same component that wrote it, so the
-two cannot drift apart.
+    classDef outer fill:#1e3a5f,stroke:#4a90d9,color:#fff
+    classDef inner fill:#2d5016,stroke:#7cb342,color:#fff
+    class Api,Inf outer
+    class App,Dom inner
+```
 
-Both forms are stored: the rich document for display, and the flattened text
-that lists, search and any older client read. The plain text is never the thing
-that is missing.
-
-### Or attach the question as a PDF
-
-A teacher who already has a question paper can attach it instead of typing —
-or as well. Up to 5 files, 10 MB each.
-
-- **PDF only, checked by reading the file's first bytes.** The declared content
-  type and the extension both come from the caller and neither is evidence of
-  anything; `%PDF-` at the start is the only part the server can trust. A text
-  file renamed `.pdf` and declared as `application/pdf` is refused.
-- **The filename is sanitised** before it is stored — directory parts dropped,
-  control characters removed — because it ends up in a `Content-Disposition`
-  header and a Save-As dialogue.
-- **Who can read it:** the teachers of the offering, an administrator, and
-  students enrolled in the class *once the assignment is published*. A draft's
-  paper is not yet set work. Anyone else gets a 404 rather than a 403, so the
-  response does not confirm that another class's paper exists.
-
-Files are stored as `bytea` in their own table. This project has no object
-storage, and adding one would mean another account and another set of
-credentials before the application runs at all. A question paper is small and
-read rarely, so the trade is worth it — and keeping the bytes in a separate
-table means no assignment query ever touches them. A deployment serving large
-files at volume should move this to object storage and keep only the key.
-
-### How it will be marked
-
-Four schemes, chosen per assignment:
-
-| Type | Total | Marking |
+| Layer | Contents | Depends on |
 |---|---|---|
-| **Points** | Whatever the teacher sets | A mark out of that total |
-| **Percentage** | Always 100 | A mark out of 100 |
-| **Pass / fail** | 1 | A decision — two buttons, not a number box |
-| **Rubric** | The sum of its criteria | Each criterion scored separately |
-
-Every type still resolves to one number in `Submission.Marks`, out of the
-assignment's `MaxMarks`. That is deliberate: averages, dashboards and the
-student's own record all read one field, so a new scheme cannot break them.
-What the type changes is the range that number may take, how the teacher
-arrives at it, and how it is worded.
-
-**The total is not the teacher's to choose for three of the four.** A
-percentage out of 50 is not a percentage; a pass is one mark out of one; a
-rubric totals its own criteria. The API resolves the maximum from the type
-rather than trusting the request, so the stored figure can never contradict the
-scheme — and the form replaces the input with what the total *will be* rather
-than leaving it to be contradicted.
-
-### Rubrics
-
-The teacher writes the criteria for that assignment: a name, what earns the
-marks, and what it is worth. Students see the rubric **before they start**, not
-only after marking — a rubric nobody can read in advance is just a mark scheme.
-
-When marking, every criterion must be scored. A partial rubric produces a total
-that looks like a mark but silently omits what was skipped, and the student
-cannot tell "scored zero" from "not looked at". The mark is the sum; the figure
-in the request is ignored, so there is no second source of truth.
-
-Two edits are refused outright, because both would rewrite results already
-given:
-
-- **Changing the grading method** once work has been submitted
-- **Removing a criterion** that has already been marked against
-
-Editing a criterion in place — renaming it, re-weighting it — keeps the marks,
-because criteria carry an id and the row is updated rather than replaced.
-
----
-
-## The writing editor and replay
-
-Students write in a block editor built on **Tiptap** rather than a textarea:
-headings, lists, tables, quotes, callouts, task lists, syntax-highlighted code,
-a `/` command palette, an outline sidebar, focus and fullscreen modes.
-
-While they write, the editor keeps an **operation log**. A teacher can then
-replay how the submission was written.
-
-### Why an event log rather than a screen recording
-
-The log is read from **ProseMirror transactions** — the editor's own description
-of what changed. That has three consequences a video does not:
-
-- **It seeks instantly.** Rebuilding the document to any point is a fold over
-  the events up to that point, so scrubbing backwards costs the same as
-  forwards, and playback runs at 0.5× to 16×.
-- **It knows what typing *is*.** A paste is a different operation from a run of
-  keystrokes, so pasted passages are marked in the replay rather than inferred.
-- **It is small.** Consecutive typing in one place is coalesced into a single
-  event carrying the run, and events are batched to the server rather than sent
-  per keystroke. An essay lands in the low thousands of events.
-
-### What the teacher sees
-
-The grading screen carries a **How this was written** card — time spent, words
-typed, words pasted — and one action that opens a full-screen workspace. It
-takes the whole viewport deliberately: reading how something was written is a
-different task from filling in a form, and it does not fit beside one.
-
-The workspace has two views.
-
-**Replay** rebuilds the document as it was written, with pasted passages
-highlighted where they landed. Below it is an activity strip — writing,
-revising, pasting, paused, away from the tab — that doubles as the scrubber, so
-"what happened here?" and "take me there" are the same click. Playback runs
-from 1× to 32×, and space, arrows and Escape work as expected.
-
-**Analytics** is a dashboard of charts:
-
-| Chart | What it answers |
-|---|---|
-| **How the document grew** | The one that matters. Typing is a slope, a paste is a cliff. The silhouette says more than any percentage. |
-| **Pace over the session** | Where the writing sped up, slowed, or stopped, with pasted buckets shaded. |
-| **Session shape** | The same activity strip, enlarged, beside pause and session figures. |
-| **Where the words came from** | Typed against pasted, as one bar. |
-| **What the time went on** | Recorded actions grouped by kind. |
-| **Large pastes** | Every block of 40+ words, with a preview. Selecting one seeks the replay to it. |
-
-Every chart is clickable and seeks the replay, so a teacher moves from "that
-looks odd" to watching it happen without hunting for the moment.
-
-Marking is a drawer, hidden until asked for, so the default state is reading
-rather than form-filling — and a mark can be awarded without leaving what was
-just watched.
-
-The charts are drawn as plain SVG against the theme tokens: no charting
-dependency, and both light and dark work without a second palette. Statistics
-come from the log on read, so they can never drift from the operations that
-produced them.
-
-**On how this is framed.** A high paste percentage has innocent explanations —
-notes drafted elsewhere, a quotation, an assistive tool. The panel reports the
-numbers and shows which passages arrived how; it does not accuse, and it does
-not score anyone's integrity. The judgement belongs to the teacher, who has
-context the system does not.
-
-### Saving
-
-- Autosaves two seconds after typing stops; ⌘S saves and marks a **version**
-- Versions can be listed and restored; restoring adds a new version rather than
-  erasing the ones after it, so the trail shows that a restore happened
-- Before a submission exists there is nothing on the server to record against,
-  so the document is kept in the browser and handed over — log and all — when
-  the student submits. The replay therefore starts at the first keystroke
-- Reopening a submission resumes the existing log rather than starting a second
-  one, so the timeline stays continuous across sittings
-
-### Authorization
-
-Recording is scoped to the author. Writing the document through the editor is
-subject to the **same rules** as the ordinary update endpoint — deadline,
-graded state, and whether the assignment permits changes — because two
-endpoints that write the same field must agree, or the more permissive one
-quietly becomes the real policy. The log itself is still accepted while the work
-is live: it records work already done, and refusing it would leave a hole in the
-replay.
-
----
-
-## Notifications
-
-A bell in the header, with a live badge. Nothing needs refreshing.
-
-### Who gets told what
-
-| Event | Who hears |
-|---|---|
-| A teacher publishes an assignment | Every enrolled student in that class, and every administrator |
-| A deadline is approaching | Students in that class who have **not** submitted yet |
-| A student submits | The teachers of that offering, and every administrator |
-| A teacher marks work | The student who wrote it |
-| A teacher returns work for revision | The student who wrote it |
-
-Deadline reminders go out twice — once with about a day left, once with about
-two hours left. A third would be nagging, and nagging is how notifications get
-ignored. Anyone who has already submitted is skipped: reminding someone about
-work they have handed in is the fastest way to teach them not to look.
-
-### How "live" works
-
-The browser holds an open **server-sent events** connection and the badge
-updates from it.
-
-SSE rather than WebSockets or SignalR: nothing is ever sent upstream on this
-connection, and `EventSource` reconnects by itself — behaviour that would
-otherwise have to be written and then got right. The browser cannot open it
-directly, because the access token lives in an httpOnly cookie and `EventSource`
-cannot set an `Authorization` header, so the connection terminates in a Next.js
-route handler that attaches the token and pipes the body through. That is the
-same arrangement as every other API call here, just held open.
-
-The stream is an **accelerator, not the source of truth**. Every notification is
-written to the database first; publishing to open connections comes after and
-its failures are logged, not raised. If nobody is connected, the row is still
-there on the next page load. The client also re-fetches whenever the tab regains
-focus, which closes the gap left by a sleeping laptop.
-
-### Not being told twice
-
-A notification can carry a dedupe key, unique per recipient and enforced by a
-database index. The deadline sweep runs every ten minutes and would otherwise
-remind the same student on every pass; the key means "already sent" is a
-constraint rather than a race the scheduler has to win. Marking is deliberately
-left un-keyed — a re-mark is news, and the student should hear about it again.
-
-### Scope
-
-Delivery is **in-process**, which is the honest scope for a single instance: a
-concurrent dictionary of open channels, each bounded and dropping its oldest
-item rather than letting a wedged client stall the request that is publishing.
-Running several instances behind a load balancer would need this backed by Redis
-or a bus, and only `INotificationStream` would change.
-
-There is no email or push delivery — see
-[Known limitations](#known-limitations).
-
----
-
-## Database security
-
-If you host the database on a managed PostgreSQL such as Supabase, the `public`
-schema is also published as an **auto-generated REST API** (PostgREST). Anyone
-holding the project URL and the anon key — which is meant to be public — can
-then read and write every table over HTTP, going straight past this API and
-every authorization rule in it.
-
-This application never uses that path. It connects directly to PostgreSQL and
-enforces access in the API. So the schema is hardened on every start:
-
-- **Row-Level Security enabled on every table**, with **no policies at all**.
-  No policy means no row matches, which denies the REST roles completely. The
-  role that owns the tables bypasses RLS, so the application is unaffected —
-  that is what makes this safe to apply automatically.
-- **The `anon` and `authenticated` roles are revoked** from the schema, its
-  tables, sequences and functions, including default privileges for future
-  objects. RLS alone is enough; removing the grants means a policy added by
-  accident later cannot re-open the schema on its own.
-
-Adding permissive policies instead would be worse than leaving RLS off: it would
-imply the REST API is a supported way in, and every table added afterwards would
-need a policy written correctly or it would silently leak.
-
-Verified against a live Supabase project — reads, inserts and deletes with the
-anon key and with the publishable key all return **401 permission denied**,
-while the application continues to read and write normally.
-
-### If your database user does not own the tables
-
-Enabling RLS for a role that neither owns the tables nor bypasses RLS would make
-every query return **zero rows rather than an error** — the application would
-start, sign nobody in, and show empty lists. So it checks first, and if that is
-the situation it skips the change and logs a warning explaining what to do
-rather than breaking the application quietly.
-
-Because the application creates the schema itself, it owns it, and the check
-passes.
-
-### A note on keys
-
-Nothing here uses the Supabase client libraries, so the four `SUPABASE_*` keys
-are not needed to run the project. The **service role key bypasses RLS
-entirely** — keep it server-side, never in frontend code or a `NEXT_PUBLIC_*`
-variable. If it has ever been pasted somewhere shared, rotate it from the
-Supabase dashboard.
-
----
-
-## Technology stack
-
-### Backend
-
-| | |
-|---|---|
-| **Runtime** | .NET 9 |
-| **Framework** | ASP.NET Core 9 Web API (controllers) |
-| **Language** | C# 13 |
-| **Database** | PostgreSQL 14+ (developed against 17) |
-| **ORM** | EF Core 9 with Npgsql |
-| **Authentication** | JWT bearer tokens, BCrypt password hashing |
-| **Validation** | FluentValidation |
-| **Logging** | Serilog — console plus a rolling file |
-| **API docs** | Swashbuckle (Swagger UI) with a bearer scheme |
-| **Versioning** | Asp.Versioning, URL segment (`/api/v1/...`) |
-| **Testing** | xUnit, FluentAssertions, EF Core in-memory provider |
-
-### Frontend
-
-| | |
-|---|---|
-| **Framework** | Next.js 16 (App Router, React 19) |
-| **Language** | TypeScript |
-| **Styling** | Tailwind CSS v4 |
-| **Components** | shadcn/ui on Base UI |
-| **Forms** | React Hook Form with Zod validation |
-| **Animation** | Motion (Framer Motion) |
-| **Notifications** | Sonner |
-| **Icons** | Lucide |
-| **Fonts** | Inter, Noto Sans Bengali, JetBrains Mono |
-
-### Tooling
-
-| | |
-|---|---|
-| **Migrations** | EF Core, applied automatically at startup |
-
----
-
-## Architecture
-
-### Backend — Clean Architecture
-
-```
-Api  ──▶  Infrastructure  ──▶  Application  ──▶  Domain
+| **Domain** | Entities, enums, domain exceptions | Nothing |
+| **Application** | DTOs, services, FluentValidation validators, `IAccessControl`, `IAppDbContext` | Domain |
+| **Infrastructure** | EF Core context and configurations, migrations, seeding, BCrypt hashing, JWT issuance | Application, Domain |
+| **Api** | Controllers, middleware, dependency registration | Infrastructure, Application |
+
+Two decisions carry most of the structural weight.
+
+**Errors are exceptions, translated once.** Services throw `NotFoundException`,
+`ForbiddenException`, `ConflictException` and `BusinessRuleException`. A single
+middleware maps these to 404, 403, 409 and 422 respectively and wraps them in
+the shared response envelope. No controller contains a `try`/`catch`, and no
+service references an HTTP status code.
+
+**Authorization operates at two levels.** Role policies (`AdminOnly`,
+`TeacherOnly`, `StudentOnly`, `AdminOrTeacher`) answer the coarse question.
+`IAccessControl` answers the question a role attribute cannot: *is this caller
+the teacher of this particular offering?* Its `Ensure*` methods throw rather
+than return a boolean, so a caller that ignores the result still fails closed. A
+fallback authorization policy requires authentication on every endpoint, so an
+action missing `[Authorize]` denies access rather than silently exposing data.
+
+### 6.3 Frontend request flow
+
+Access tokens are never exposed to JavaScript. They are held in `httpOnly`
+cookies; Server Components read them directly, and client components call an
+internal proxy route that attaches the bearer token and handles refresh in one
+place.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as Browser
+    participant P as proxy.ts
+    participant R as Next.js route handler
+    participant A as API
+    participant D as PostgreSQL
+
+    U->>P: request a protected page
+    P->>P: read httpOnly session cookie
+    alt access token expired
+        P->>A: POST /api/v1/auth/refresh
+        A->>D: validate + rotate refresh token
+        A-->>P: new token pair
+        P->>P: write refreshed cookies
+    end
+    P-->>U: render Server Component
+
+    Note over U,R: Client-side data fetching
+    U->>R: GET /api/proxy/api/v1/...
+    R->>R: attach bearer token from cookie
+    R->>A: forward with Authorization header
+    A->>A: re-derive role from signed token
+    A->>D: query
+    A-->>R: JSON envelope
+    R-->>U: JSON envelope
 ```
 
-References point inward only, so business rules never depend on ASP.NET or EF
-Core and can be tested without a host or a database.
+`proxy.ts` — Next.js 16 renames `middleware` to `proxy` — gates routes and
+refreshes an expired access token *before* the request reaches a page. A Server
+Component cannot set cookies during render, so without this an expired token
+would fail every server-side data call.
 
-| Layer | Holds |
-|---|---|
-| **Domain** | Entities, enums, domain exceptions. No dependencies. |
-| **Application** | DTOs, services, validators, `IAccessControl`. Depends on `IAppDbContext`, not on EF directly. |
-| **Infrastructure** | EF Core, migrations, seeding, BCrypt, JWT. |
-| **Api** | Controllers, middleware, composition. Controllers stay thin — they call a service and wrap the result. |
+This gate is a convenience, not the security boundary. **The API is the only
+component that trusts a role**, and it re-derives the role from the signed token
+on every request.
 
-Two decisions carry most of the weight:
-
-**Errors are exceptions, translated once.** Services throw
-`NotFoundException`, `ForbiddenException`, `ConflictException`,
-`BusinessRuleException`; one middleware maps them to 404/403/409/422 and the
-shared response envelope. No controller contains a `try`/`catch`, and no service
-knows an HTTP status code.
-
-**Authorization has two layers.** Role policies (`AdminOnly`, `TeacherOnly`,
-`StudentOnly`, `AdminOrTeacher`) handle the coarse question; `IAccessControl`
-handles the one a role attribute cannot answer — *is this caller the teacher of
-**this** offering?* Its `Ensure*` methods throw rather than return `bool`, so a
-caller who ignores the result still fails closed. A fallback policy requires
-authentication everywhere, so an endpoint missing `[Authorize]` denies access
-rather than silently exposing data.
-
-### Frontend — Next.js App Router
-
-**Tokens never touch JavaScript.** They live in `httpOnly` cookies. Server
-Components read them directly; client components call an internal proxy route
-that attaches the bearer token and handles refresh in exactly one place.
-
-**`proxy.ts`** — Next.js 16 renamed `middleware` to `proxy` — gates routes and,
-importantly, refreshes an expired access token *before* the request reaches a
-page. A Server Component cannot set cookies during render, so without this an
-expired token would fail every server-side data call.
-
-It is a convenience gate, not the security boundary. **The API is the only place
-a role is trusted**, and it re-derives the role from the signed token on every
-request.
-
-**Server decides, UI displays.** The student assignment endpoint returns
-`canSubmit`, `canEdit` and `blockedReason`, so the interface never re-derives
-deadline rules in TypeScript — and a client that ignores them is still refused
-by the write path.
+**The server decides, the interface displays.** The student assignment endpoint
+returns `canSubmit`, `canEdit` and `blockedReason`, so the interface never
+re-derives deadline rules in TypeScript — and a client that ignores them is
+still refused by the write path.
 
 ---
 
-## Data model
+## 7. Data model
 
+### 7.1 Entity relationships
+
+```mermaid
+erDiagram
+    users ||--o{ enrollments : "enrolled as student"
+    users ||--o{ teacher_assignments : "teaches"
+    users ||--o{ assignments : "authors"
+    users ||--o{ submissions : "submits"
+    users ||--o{ notifications : receives
+    users ||--o{ refresh_tokens : holds
+
+    classes ||--o{ enrollments : has
+    classes ||--o{ class_subjects : offers
+    subjects ||--o{ class_subjects : "taught as"
+
+    class_subjects ||--o{ teacher_assignments : "allocated to"
+    class_subjects ||--o{ assignments : "scoped to"
+
+    assignments ||--o{ submissions : receives
+    assignments ||--o{ rubric_criteria : "graded by"
+
+    submissions ||--o{ submission_feedbacks : accumulates
+    submissions ||--o{ submission_versions : "snapshot as"
+    submissions ||--o{ submission_events : "recorded as"
+    submissions ||--o{ submission_criterion_scores : "scored per criterion"
+    rubric_criteria ||--o{ submission_criterion_scores : scores
 ```
-Users ──┬─▶ Enrollments ──▶ Classes ◀── ClassSubjects ──▶ Subjects
-        ├─▶ TeacherAssignments ──▶ ClassSubjects
-        ├─▶ Assignments ──▶ ClassSubjects
-        └─▶ Submissions ──▶ Assignments
-                └─▶ SubmissionFeedbacks
-```
 
-**`ClassSubject` is the pivot.** The brief says a teacher assigns work "to a
-specific class/course **and** subject", so an assignment belongs to an
-*offering* — one subject taught to one class — rather than to either alone.
-Teacher permissions attach to the same row, which collapses "may this teacher
-grade this submission?" into a single lookup.
+**`class_subjects` is the pivot.** The specification requires that a teacher
+assigns work to a specific class/course **and** subject, so an assignment
+belongs to an *offering* — one subject taught to one class — rather than to
+either alone. Teacher permissions attach to the same row, which reduces "may
+this teacher grade this submission?" to a single lookup.
 
-**Enrolment is a join table**, not a column on `Users`. The brief covers schools
-*and* colleges, and a college student takes several courses at once.
+**Enrolment is a join table**, not a column on `users`. The specification covers
+schools and colleges alike, and a college student takes several courses
+concurrently.
 
-**Feedback is a table**, not a column, so a grade → return → regrade cycle keeps
-every round, each snapshotting the marks standing at the time.
+**Feedback is a table**, not a column, so a grade → return → regrade cycle
+preserves every round, each snapshotting the marks standing at the time.
 
-Rules the database enforces itself, not only the service layer:
+### 7.2 Constraints enforced by the database
+
+These are enforced in the schema, not only in the service layer.
 
 | Constraint | Prevents |
 |---|---|
 | `unique(assignment_id, student_id)` | Duplicate submissions, including concurrent ones |
 | `ck_assignments_max_marks_positive` | Assignments worth zero or less |
 | `ck_submissions_marks_non_negative` | Negative marks |
-| `ck_submissions_graded_has_grader` | Graded work with no mark, grader or timestamp |
+| `ck_submissions_graded_has_grader` | Graded work lacking a mark, grader or timestamp |
 | `ck_assignments_published_has_timestamp` | Published work with no publication date |
+| `ix_criterion_scores_submission_criterion_unique` | A criterion scored twice for one submission |
+
+### 7.3 Auditing and soft deletion
 
 Every table carries `created_at`, `updated_at`, `created_by`, `modified_by` and
-soft-delete columns, applied by a `SaveChanges` interceptor and a global query
-filter. **No `Remove()` call anywhere destroys a row** — deletes are rewritten
-as soft deletes, so a graded submission cannot be lost.
+soft-delete columns, populated by a `SaveChanges` interceptor and filtered by a
+global query filter. **No `Remove()` call in the codebase destroys a row** —
+deletes are rewritten as soft deletes, so a graded submission cannot be lost.
 
-Keys are UUID v7 (time-ordered), so inserts stay at the right edge of the index
-instead of fragmenting it the way random v4 GUIDs do.
+Primary keys are UUID v7 (time-ordered), so inserts remain at the right edge of
+the index rather than fragmenting it as random v4 values do.
 
 ---
 
-## Project structure
+## 8. Technology stack
+
+### 8.1 Backend
+
+| Concern | Choice |
+|---|---|
+| Runtime | .NET 9 |
+| Framework | ASP.NET Core 9 Web API (controllers) |
+| Language | C# 13 |
+| Database | PostgreSQL 14+ (developed and verified against 17) |
+| ORM | EF Core 9 with Npgsql |
+| Authentication | JWT bearer tokens, BCrypt password hashing (work factor 12) |
+| Validation | FluentValidation |
+| Logging | Serilog — console and rolling file |
+| API documentation | Swashbuckle (Swagger UI) with a bearer scheme |
+| API versioning | Asp.Versioning, URL segment (`/api/v1/…`) |
+| Testing | xUnit, FluentAssertions, EF Core in-memory provider |
+
+### 8.2 Frontend
+
+| Concern | Choice |
+|---|---|
+| Framework | Next.js 16 (App Router, React 19) |
+| Language | TypeScript |
+| Styling | Tailwind CSS v4 |
+| Components | shadcn/ui on Base UI |
+| Editor | Tiptap 3 (ProseMirror) |
+| Forms | React Hook Form with Zod validation |
+| Animation | Motion |
+| Toasts | Sonner |
+| Icons | Lucide |
+| Fonts | Inter, Noto Sans Bengali, JetBrains Mono |
+
+### 8.3 Infrastructure
+
+| Concern | Choice |
+|---|---|
+| Containerisation | Docker, multi-stage builds, Compose v2 |
+| Migrations | EF Core, applied automatically at startup |
+| Charts | Hand-authored SVG against theme tokens — no charting dependency |
+
+---
+
+## 9. Project structure
 
 ```
 .
-├── database/                     Schema script and database notes
+├── docker-compose.yml            Three-service stack: db, api, web
+├── .env.example                  Compose overrides, placeholders only
+├── database/                     Standalone schema script and notes
+│   └── schema.sql                Full DDL, for creating the schema directly
 ├── backend/
+│   ├── Dockerfile                Multi-stage: build → test → publish → runtime
+│   ├── .dockerignore             Excludes .env and host build output
 │   ├── .env.example              Every variable, placeholders only
+│   ├── Directory.Build.props     Shared MSBuild settings
 │   ├── src/
-│   │   ├── AssignmentSystem.Domain/           entities, enums, exceptions
-│   │   ├── AssignmentSystem.Application/      DTOs, services, validators
-│   │   │   ├── Common/            envelope, paging, IAccessControl
-│   │   │   └── Features/          Auth · Admin · Teacher · Student
-│   │   ├── AssignmentSystem.Infrastructure/   EF Core, security, seeding
-│   │   │   ├── Persistence/       DbContext, configurations, Migrations/
-│   │   │   └── Security/          BCrypt, JWT
-│   │   └── AssignmentSystem.Api/              controllers, middleware
+│   │   ├── AssignmentSystem.Domain/          entities, enums, exceptions
+│   │   ├── AssignmentSystem.Application/     DTOs, services, validators
+│   │   │   ├── Common/                       envelope, paging, IAccessControl
+│   │   │   └── Features/                     Auth · Admin · Teacher · Student
+│   │   ├── AssignmentSystem.Infrastructure/  EF Core, security, seeding
+│   │   │   ├── Persistence/                  DbContext, configurations, Migrations/
+│   │   │   └── Security/                     BCrypt, JWT
+│   │   └── AssignmentSystem.Api/             controllers, middleware
 │   └── tests/
-│       └── AssignmentSystem.UnitTests/        86 xUnit tests
+│       └── AssignmentSystem.UnitTests/       152 xUnit tests
 └── frontend/
-    ├── proxy.ts                  route protection + token refresh
+    ├── Dockerfile                Multi-stage: deps → build → runtime
+    ├── .dockerignore
+    ├── next.config.ts            output: "standalone" for the container image
+    ├── proxy.ts                  route protection and token refresh
     ├── app/
-    │   ├── (app)/                signed-in pages
-    │   ├── api/                  login, logout, authenticated proxy
-    │   └── login/
-    ├── components/               ui · layout · common · motion · providers
-    └── lib/                      api client, i18n, formatting
+    │   ├── (app)/                authenticated pages
+    │   ├── api/                  login, logout, authenticated proxy, SSE stream
+    │   ├── login/
+    │   └── register/
+    ├── components/               ui · layout · editor · teacher · common
+    └── lib/                      API client, i18n, formatting, replay analysis
 ```
 
 ---
 
-## Setup on macOS
+## 10. Functional scope by role
 
-Written for macOS (Apple Silicon and Intel both work). Linux and Windows differ
-only in how the prerequisites are installed.
+### 10.1 Administrator
 
-### 1. Prerequisites
+- Create, edit, activate, deactivate and delete user accounts
+- Reset a password, which also signs that account out everywhere
+- Manage classes/courses and subjects
+- Define which subjects a class is taught, and allocate teachers to them
+- Enrol students individually or in bulk
+- Approve teacher accounts created through self-registration
+- Manage application settings, including whether registration is open
+- Read every assignment and submission in the system
 
-| Tool | Version | Check with |
-|---|---|---|
-| .NET SDK | 9.0+ | `dotnet --version` |
-| Node.js | 20+ | `node --version` |
-| PostgreSQL | 14+ | `psql --version` |
+### 10.2 Teacher
 
-With [Homebrew](https://brew.sh):
+- Create, update and delete assignments for their own allocations
+- Author the brief in a rich block editor
+- Select the grading scheme: points, percentage, pass/fail, or a rubric
+- Set title, description, deadline and maximum marks
+- Save as a draft or publish
+- Archive work rather than delete it once students have submitted
+- Review submissions, including which enrolled students have **not** submitted
+- Award marks with feedback, and change a submission's status
+- Replay how a submission was written, with analytics
 
-```bash
-brew install --cask dotnet-sdk
-```
+### 10.3 Student
 
-```bash
-brew install node
-```
+- View published assignments for enrolled classes
+- View assignment details, rubric and deadline
+- Compose answers in a rich document editor
+- Attach an optional link alongside the answer
+- Revise a submission before the deadline where the assignment permits it
+- View submission status, marks and teacher feedback
 
-```bash
-brew install postgresql@16
-```
+### 10.4 Common
 
-Start PostgreSQL and have it come back after a reboot:
-
-```bash
-brew services start postgresql@16
-```
-
-Homebrew's PostgreSQL creates a superuser named after your macOS account with no
-password, so a local connection string usually needs no credentials at all.
-
-### 2. Clone and enter the project
-
-```bash
-git clone <your-repository-url> submitta && cd submitta
-```
-
-### 3. Create an empty database
-
-```bash
-createdb assignment_system
-```
-
-That is all the database preparation there is. Every table is created by the
-application on first run — see [Database setup](#database-setup).
-
-### 4. Configure the backend
-
-```bash
-cp backend/.env.example backend/.env
-```
-
-Open `backend/.env` and set `ConnectionStrings__DefaultConnection` to match your
-PostgreSQL. With Homebrew's default setup that is:
-
-```
-ConnectionStrings__DefaultConnection=Host=localhost;Port=5432;Database=assignment_system;Username=YOUR_MAC_USERNAME
-```
-
-Run `whoami` if you are not sure of the username.
-
-| Variable | Required | Notes |
-|---|---|---|
-| `ConnectionStrings__DefaultConnection` | **Yes** | Both the `postgresql://` URI and the ADO.NET keyword form work. |
-| `Jwt__Key` | Outside Development | A development key ships in `appsettings.Development.json`, so local sign-in works immediately. Startup **fails** outside Development without this. Generate with `openssl rand -base64 48`. |
-| `Cors__AllowedOrigins__0` | No | Defaults to `http://localhost:3000`. |
-| `Seed__Enabled` | No | Defaults to `true`. Set `false` for a real deployment. |
-
-TLS is chosen from the host — disabled for localhost, required for anything
-remote — so the same format works locally and against a hosted database.
-
-### 5. Configure the frontend
-
-```bash
-cp frontend/.env.example frontend/.env.local
-```
-
-The defaults point at `http://localhost:5062`, which is where the API runs.
+- **Live notifications** — a header bell that updates without a page refresh
+- **Self-registration** for students and teachers, with administrator approval
+  required for teachers
+- **JWT authentication** with refresh-token rotation and reuse detection
+- **Role-based authorization** enforced server-side on every request
+- **English and Bangla** interface, including Bengali numerals and dates
+- **Light and dark themes**, following the system setting by default
+- Paging, search, sorting and filtering on every list
+- Responsive, keyboard-navigable layout with loading and empty states
 
 ---
 
-## Database setup
+## 11. Authorization and business rules
 
-**There are no tables to create.** The API applies its migrations and seeds the
-demo data on startup, so the schema and the demo accounts exist the first time
-you run it.
+Role membership determines only part of access. Most rules depend on data
+rather than on a role name.
 
-What happens on that first run:
+### 11.1 Access rules
 
-1. Connects using `ConnectionStrings__DefaultConnection`
-2. Applies any pending EF Core migration — creating 15 tables, 4 PostgreSQL
-   enum types, the check constraints and the indexes
-3. Seeds 6 users, 2 classes, 3 subjects, 3 offerings, 3 enrolments,
-   4 assignments, 3 submissions and 8 application settings
+- A teacher may reach only offerings they are allocated to. Requesting another
+  teacher's assignment returns **404, not 403** — confirming existence is itself
+  a disclosure.
+- Students never see drafts, and never see another student's submission.
+- One submission per student per assignment, enforced by a unique index in
+  addition to a service check, so two concurrent requests cannot both succeed.
 
-The seeder is **idempotent**: it inserts only what is missing, so restarting
-never duplicates anything, and a partially seeded database repairs itself.
+### 11.2 Submission rules
 
-### Applying the schema yourself instead
+- After the deadline, a first submission is accepted only if the assignment
+  allows late work, and is then flagged. Lateness is stamped at submission time,
+  so moving the deadline afterwards cannot make anyone retroactively late.
+- Editing an answer requires being before the deadline, ungraded, and either
+  permitted by the assignment or explicitly returned for revision. The deadline
+  always takes precedence.
 
-If you would rather create the schema with `psql` than let the application do
-it, [`database/schema.sql`](database/schema.sql) is every migration in order as
-one idempotent script:
+### 11.3 Grading and lifecycle rules
 
-```bash
-psql -d assignment_system -f database/schema.sql
+- Marks must fall between zero and the assignment's maximum, and that maximum
+  cannot later be reduced below marks already awarded.
+- Work that has submissions may be archived but not deleted or unpublished, so
+  no student's marks are ever hidden or destroyed.
+- The last active administrator cannot be deactivated or deleted.
+
+All of the above are covered by the test suite — see [Section 17](#17-testing).
+
+---
+
+## 12. Assignment authoring and grading
+
+### 12.1 Authoring the brief
+
+The brief is composed in the **same block editor students answer in** —
+headings, lists, tables, quotes, callouts, highlighted code and a `/` command
+palette. Students see it rendered by the same component that authored it, so the
+two representations cannot diverge.
+
+Both forms are persisted: the rich document for display, and the flattened text
+that lists, search and any older client read.
+
+### 12.2 Grading schemes
+
+Four schemes are available, selected per assignment.
+
+| Scheme | Total | Marking method |
+|---|---|---|
+| **Points** | Set by the teacher | A mark out of that total |
+| **Percentage** | Always 100 | A mark out of 100 |
+| **Pass / fail** | 1 | A decision — two buttons, not a numeric field |
+| **Rubric** | Sum of its criteria | Each criterion scored separately |
+
+Every scheme resolves to a single value in `Submission.Marks`, out of the
+assignment's `MaxMarks`. This is deliberate: averages, dashboards and the
+student's record all read one field, so a new scheme cannot break them. What the
+scheme changes is the permitted range, how the teacher arrives at the value, and
+how it is presented.
+
+**The total is not the teacher's to choose for three of the four schemes.** A
+percentage out of 50 is not a percentage; a pass is one mark out of one; a
+rubric totals its own criteria. The API resolves the maximum from the scheme
+rather than trusting the request, so the stored figure cannot contradict the
+scheme. The form correspondingly displays what the total *will be* instead of
+offering an input that could disagree.
+
+### 12.3 Rubrics
+
+The teacher authors the criteria for that assignment: a name, a description of
+what earns the marks, and a weight. Students see the rubric **before they
+start**, not only after marking.
+
+When marking, every criterion must be scored. A partial rubric would produce a
+total that resembles a mark while silently omitting what was skipped, and the
+student could not distinguish "scored zero" from "not assessed". The total is
+the sum of the criteria; the figure in the request is ignored, so there is no
+second source of truth.
+
+Two edits are refused outright, because both would rewrite results already
+issued:
+
+- **Changing the grading scheme** once work has been submitted
+- **Removing a criterion** that has already been marked against
+
+Editing a criterion in place — renaming or re-weighting it — preserves existing
+marks, because criteria carry an identifier and the row is updated rather than
+replaced.
+
+---
+
+## 13. The writing editor and replay
+
+Students compose answers in a block editor built on Tiptap: headings, lists,
+tables, quotes, callouts, task lists, syntax-highlighted code, a `/` command
+palette, an outline sidebar, and focus and fullscreen modes.
+
+While the student writes, the editor maintains an **operation log**. A teacher
+can subsequently replay how the submission was written.
+
+### 13.1 Why an operation log rather than a screen recording
+
+The log is derived from **ProseMirror transactions** — the editor's own
+description of what changed. This has three consequences a video does not.
+
+- **Seeking is instantaneous.** Rebuilding the document to any point is a fold
+  over the events up to that point, so scrubbing backwards costs the same as
+  forwards.
+- **Operation types are known, not inferred.** A paste is a distinct operation
+  from a run of keystrokes, so pasted passages are marked rather than guessed.
+- **The log is compact.** Consecutive typing in one location is coalesced into a
+  single event carrying the run, and events are batched to the server rather
+  than transmitted per keystroke. A full essay produces events in the low
+  thousands.
+
+### 13.2 The teacher's view
+
+The grading screen carries a **How this was written** summary — time spent,
+words typed, words pasted — and one action that opens a full-screen workspace.
+The workspace occupies the whole viewport deliberately: examining how something
+was written is a different task from completing a form.
+
+The workspace offers two views.
+
+**Replay** reconstructs the document as it was written, highlighting pasted
+passages where they landed. Below it is an activity strip — writing, revising,
+pasting, paused, away from the tab — which doubles as the scrubber. Playback
+runs from 1× to 32×, with space, arrow and Escape key support.
+
+**Analytics** presents a dashboard of charts.
+
+| Chart | Question answered |
+|---|---|
+| **Document growth** | How the length developed. Typing is a slope; a paste is a step change |
+| **Pace over the session** | Where writing accelerated, slowed or stopped, with pasted intervals shaded |
+| **Session shape** | The activity strip enlarged, beside pause and session figures |
+| **Word provenance** | Typed against pasted, as a single bar |
+| **Time distribution** | Recorded actions grouped by kind |
+| **Large pastes** | Every block of 40 or more words, with a preview |
+
+Every chart is clickable and seeks the replay to the corresponding moment.
+
+Marking is presented in a drawer, hidden until requested, so the default state
+is reading rather than form-filling — and a mark can be awarded without leaving
+the replay.
+
+Charts are drawn as plain SVG against the theme tokens, so light and dark modes
+require no second palette. Statistics are computed from the log on read, so they
+cannot drift from the operations that produced them.
+
+**On interpretation.** A high paste proportion has innocent explanations: notes
+drafted elsewhere, a quotation, an assistive tool. The panel reports the figures
+and shows which passages arrived by which means. It does not accuse and does not
+score anyone's integrity. That judgement belongs to the teacher, who has context
+the system does not.
+
+### 13.3 Persistence
+
+- Autosaves two seconds after typing stops; ⌘S saves and marks a **version**
+- Versions can be listed and restored; restoring appends a new version rather
+  than erasing subsequent ones, so the trail records that a restore occurred
+- Before a submission exists there is nothing on the server to record against,
+  so the document is held in the browser and transferred — log included — when
+  the student submits. The replay therefore begins at the first keystroke
+- Reopening a submission resumes the existing log rather than beginning a second
+  one, so the timeline remains continuous across sittings
+
+### 13.4 Authorization
+
+Recording is scoped to the author. Writing the document through the editor is
+subject to the **same rules** as the ordinary update endpoint — deadline, graded
+state, and whether the assignment permits changes — because two endpoints that
+write the same field must agree, or the more permissive one silently becomes the
+effective policy. The log itself is still accepted while the work is live: it
+records work already performed, and refusing it would leave a gap in the replay.
+
+---
+
+## 14. Notifications
+
+A header bell with a live badge. No page refresh is required.
+
+### 14.1 Delivery matrix
+
+| Event | Recipients |
+|---|---|
+| A teacher publishes an assignment | Every enrolled student in that class, and every administrator |
+| A deadline is approaching | Students in that class who have **not** yet submitted |
+| A student submits | The teachers of that offering, and every administrator |
+| A teacher marks work | The student who wrote it |
+| A teacher returns work for revision | The student who wrote it |
+
+Deadline reminders are sent twice: once at approximately one day remaining, and
+once at approximately two hours remaining. Students who have already submitted
+are skipped.
+
+### 14.2 Real-time delivery
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant T as Teacher browser
+    participant W as Next.js
+    participant A as API
+    participant D as PostgreSQL
+    participant S as Student browser
+
+    S->>W: GET /api/notifications/stream
+    W->>A: forward with bearer token
+    A-->>S: event: ready {unreadCount}
+    Note over A,S: connection held open
+
+    T->>W: POST publish assignment
+    W->>A: forward with bearer token
+    A->>D: write assignment
+    A->>D: write notification rows
+    A->>A: publish to open channels
+    A-->>S: event: notification {…, unreadCount}
+    S->>S: badge updates, no refresh
 ```
 
-It creates the tables but inserts no data — start the API afterwards and the
-seeder fills in the demo content. See [`database/README.md`](database/README.md).
+Server-sent events are used rather than WebSockets or SignalR: nothing is ever
+sent upstream on this connection, and `EventSource` reconnects automatically.
+The browser cannot open the connection directly, because the access token is
+held in an `httpOnly` cookie and `EventSource` cannot set an `Authorization`
+header. The connection therefore terminates in a Next.js route handler that
+attaches the token and pipes the body through — the same arrangement as every
+other API call, held open.
 
-### Managing migrations by hand
+The stream is an **accelerator, not the source of truth**. Every notification is
+written to the database first; publication to open connections follows, and its
+failures are logged rather than raised. If no client is connected, the row is
+still present on the next page load. The client also re-fetches when the tab
+regains focus, closing the gap left by a sleeping machine.
 
-Only needed if you are changing the schema. Requires the EF tools:
+### 14.3 Deduplication
+
+A notification may carry a dedupe key, unique per recipient and enforced by a
+database index. The deadline sweep runs every ten minutes and would otherwise
+remind the same student on every pass; the key makes "already sent" a constraint
+rather than a race the scheduler must win. Marking is deliberately left
+un-keyed, because a re-mark is new information.
+
+### 14.4 Scope
+
+Delivery is **in-process**: a concurrent dictionary of open channels, each
+bounded and dropping its oldest item rather than allowing a stalled client to
+block the publishing request. Running multiple instances behind a load balancer
+would require Redis or a message bus, and only `INotificationStream` would
+change.
+
+---
+
+## 15. Database and migrations
+
+### 15.1 Automatic setup
+
+The API applies all pending migrations and seeds demo data at startup, before
+serving any request. Under Docker this requires no action at all; running
+locally it requires only an empty database.
+
+Verified: from an empty volume, startup produces **18 tables** (17 application
+tables plus the EF migrations history) and a fully populated demo dataset.
+
+### 15.2 Applying the schema directly
+
+For evaluation without running the application, `database/schema.sql` contains
+the complete DDL:
 
 ```bash
-dotnet tool install --global dotnet-ef
+createdb assignment_system && psql -d assignment_system -f database/schema.sql
 ```
 
-Apply migrations without starting the API:
+The API will then detect the schema as current and proceed to seeding.
+
+### 15.3 Managing migrations manually
 
 ```bash
-dotnet ef database update --project backend/src/AssignmentSystem.Infrastructure --startup-project backend/src/AssignmentSystem.Api
+dotnet ef migrations add <Name> \
+  --project backend/src/AssignmentSystem.Infrastructure \
+  --startup-project backend/src/AssignmentSystem.Api
 ```
-
-Create a new migration after changing an entity:
 
 ```bash
-dotnet ef migrations add <Name> --project backend/src/AssignmentSystem.Infrastructure --startup-project backend/src/AssignmentSystem.Api --output-dir Persistence/Migrations
+dotnet ef database update \
+  --project backend/src/AssignmentSystem.Infrastructure \
+  --startup-project backend/src/AssignmentSystem.Api
 ```
 
-### Inspecting the database
+### 15.4 Resetting
+
+Under Docker:
 
 ```bash
-psql -d assignment_system -c "\dt"
+docker compose down --volumes && docker compose up -d
 ```
 
-### Starting over
-
-Deletes the volume and everything in it:
+Locally:
 
 ```bash
 dropdb assignment_system && createdb assignment_system
@@ -834,113 +1042,110 @@ dropdb assignment_system && createdb assignment_system
 
 ---
 
-## Running the backend
+## 16. Database security
 
-From the repository root:
+When the database is hosted on a managed PostgreSQL such as Supabase, the
+`public` schema is also published as an **auto-generated REST API** (PostgREST).
+Anyone holding the project URL and the anon key — which is designed to be public
+— could then read and write every table over HTTP, bypassing this API and every
+authorization rule within it.
 
-```bash
-dotnet run --project backend/src/AssignmentSystem.Api
-```
+This application never uses that path. It connects directly to PostgreSQL and
+enforces access in the API. The schema is therefore hardened on every start:
 
-| | |
-|---|---|
-| **API** | <http://localhost:5062> |
-| **Swagger UI** | <http://localhost:5062/swagger> |
-| **Health check** | <http://localhost:5062/health> |
+- **Row-Level Security is enabled on every table, with no policies at all.** No
+  policy means no row matches, which denies the REST roles completely. The role
+  owning the tables bypasses RLS, so the application is unaffected — which is
+  what makes this safe to apply automatically.
+- **The `anon` and `authenticated` roles are revoked** from the schema, its
+  tables, sequences and functions, including default privileges for future
+  objects. RLS alone would suffice; removing the grants additionally means a
+  policy added by accident later cannot re-open the schema on its own.
 
-Leave this terminal running. The first start takes a few seconds longer while
-migrations and seeding complete — you will see `Seeded 6 User row(s).` and
-similar lines in the log.
+Adding permissive policies instead would be worse than leaving RLS disabled: it
+would imply the REST API is a supported entry point, and every subsequently
+added table would need a correctly written policy or would silently leak.
 
-To restore packages explicitly first:
+`FORCE ROW LEVEL SECURITY` is deliberately not used, as it would apply the
+policies to the table owner — precisely the connection this application uses.
 
-```bash
-dotnet restore backend
-```
+**Verification.** Against a live Supabase project, reads, inserts and deletes
+using both the anon key and the publishable key return **401 permission
+denied**, while the application continues to read and write normally. Under
+Docker, `0 table(s) still unprotected` is reported at every startup.
 
----
+### 16.1 When the database user does not own the tables
 
-## Running the frontend
+Enabling RLS for a role that neither owns the tables nor bypasses RLS would
+cause every query to return **zero rows rather than an error** — the application
+would start, authenticate nobody, and display empty lists. The initialiser
+therefore checks first, and if that is the situation it skips the change and
+logs a warning explaining the remedy rather than failing silently.
 
-In a **second terminal**, from the repository root:
+Because the application creates the schema itself, it owns it, and the check
+passes.
 
-```bash
-npm --prefix frontend install
-```
+### 16.2 A note on hosted-provider keys
 
-```bash
-npm --prefix frontend run dev
-```
-
-| | |
-|---|---|
-| **Application** | <http://localhost:3000> |
-
-The frontend defaults to `http://localhost:5062` for the API. To change it,
-copy `frontend/.env.example` to `frontend/.env.local` and edit `API_BASE_URL`.
-
-Sign in with any account from [Demo credentials](#demo-credentials) — the login
-page lists all three and one click fills the form.
-
-### Production build
-
-```bash
-npm --prefix frontend run build && npm --prefix frontend run start
-```
+Nothing in this project uses the Supabase client libraries, so the `SUPABASE_*`
+keys are not required to run it. The **service role key bypasses RLS entirely**;
+it must remain server-side and must never appear in frontend code or a
+`NEXT_PUBLIC_*` variable. If it has been exposed, rotate it from the provider's
+dashboard.
 
 ---
 
-## Running the tests
+## 17. Testing
+
+152 xUnit tests covering the service layer, domain rules and authorization
+boundaries.
+
+In Docker, on the same SDK image used to compile the application:
 
 ```bash
-dotnet test backend
+docker build --target test ./backend
 ```
 
-86 tests, roughly 11 seconds, no database required.
+Locally:
 
-| Suite | Tests | Covers |
+```bash
+dotnet test backend/AssignmentSystem.sln
+```
+
+Current result:
+
+```
+Passed!  - Failed: 0, Passed: 152, Skipped: 0, Total: 152
+```
+
+Tests use the EF Core in-memory provider with the auditing interceptor wired in,
+so audit columns behave as they do in production. Time-dependent behaviour is
+driven through an injectable `IDateTimeProvider` rather than the system clock.
+
+---
+
+## 18. API reference
+
+Swagger UI is available at <http://localhost:5062/swagger> in Development mode,
+with an **Authorize** button: sign in via `POST /api/v1/auth/login`, paste the
+`accessToken`, and every endpoint executes as that role.
+
+**58 paths, 74 operations** across seven groups.
+
+| Group | Base path | Access |
 |---|---|---|
-| `AccessControlTests` | 12 | Resource-level authorization |
-| `AssignmentLifecycleTests` | 15 | Draft/publish, deadlines, maximum marks |
-| `SubmissionWorkflowTests` | 19 | Visibility, submitting, editing |
-| `GradingTests` | 11 | Marks bounds, grading record, status changes |
-| `AuthenticationTests` | 16 | Sign-in, token rotation, hashing |
-| `AdminGuardTests` | 13 | Self-protection, referential guards |
-
-These are unit tests of the service layer, using EF Core's in-memory provider
-and an injectable clock. Deadline rules are tested by *moving time* rather than
-by sleeping or seeding dates relative to now — which is the reason
-`IDateTimeProvider` exists at all.
-
-Sample assertions, to show the level they work at:
-
-- A wrong password and an unknown email produce an **identical** message —
-  asserted by comparing the two, not by reading the code.
-- Replaying a rotated refresh token revokes the **entire** session chain.
-- Moving an assignment's deadline after a submission does **not** make that
-  submission late.
-
----
-
-## API
-
-Swagger UI at <http://localhost:5062/swagger>, with an **Authorize** button:
-sign in via `POST /api/v1/auth/login`, paste the `accessToken`, and every
-endpoint runs as that role.
-
-67 routes across seven groups.
-
-| Group | Base | Access |
-|---|---|---|
-| Auth | `/api/v1/auth` | Anonymous / any signed-in user |
-| Admin | `/api/v1/admin/*` | Admin |
-| Assignments | `/api/v1/assignments` | Teacher, Admin |
-| Grading | `/api/v1/grading` | Teacher, Admin |
+| Auth | `/api/v1/auth` | Anonymous, or any authenticated user |
+| Admin | `/api/v1/admin/*` | Administrator |
+| Assignments | `/api/v1/assignments` | Teacher, Administrator |
+| Grading | `/api/v1/grading` | Teacher, Administrator |
 | Student | `/api/v1/student` | Student |
 | Editor | `/api/v1/submissions/{id}` | Author writes; author and their teacher read |
-| Settings | `/api/v1/settings` | Public subset for all; full for Admin |
+| Notifications | `/api/v1/notifications` | Any authenticated user |
+| Settings | `/api/v1/settings` | Public subset for all; full for Administrator |
 
-Every response uses one envelope, so a client parses one shape:
+### 18.1 Response envelope
+
+Every response uses one envelope, so a client parses a single shape.
 
 ```jsonc
 { "success": true, "data": { }, "message": "Assignment published." }
@@ -955,194 +1160,219 @@ Every response uses one envelope, so a client parses one shape:
 }
 ```
 
-Status codes are used precisely: **422** is a business-rule violation (a missed
-deadline), **400** a malformed request, **409** a conflict with existing state,
-**403** a resource the caller may not touch, **404** one they may not know
-exists.
+### 18.2 Status code semantics
 
-List endpoints support `page`, `pageSize`, `search`, `sortBy` and
-`sortDescending`, plus per-endpoint filters. Sort fields come from a whitelist,
-so an arbitrary `?sortBy=` can never reach reflection or raw SQL, and page size
-is clamped server-side rather than trusted.
+| Code | Meaning |
+|---|---|
+| **400** | Malformed request |
+| **403** | A resource the caller may not act upon |
+| **404** | A resource the caller may not know exists |
+| **409** | Conflict with existing state |
+| **422** | Business-rule violation, such as a missed deadline |
 
-Login and refresh are rate limited to ten attempts per minute per IP.
+### 18.3 List conventions
+
+List endpoints accept `page`, `pageSize`, `search`, `sortBy` and
+`sortDescending`, plus per-endpoint filters. Sort fields are drawn from a
+whitelist, so an arbitrary `?sortBy=` value can never reach reflection or raw
+SQL, and page size is clamped server-side rather than trusted.
+
+Login and refresh are rate limited to ten attempts per minute per IP address.
 
 ---
 
-## Troubleshooting
+## 19. Troubleshooting
 
-**`Failed to connect to 127.0.0.1:5433`**
-PostgreSQL is not running. Start it with `brew services start postgresql@16`,
-and confirm with `psql -l`.
+### 19.1 Docker
 
-**`Address already in use` on 5062 or 3000**
-Something else holds the port — often an earlier run of this project. Find and
-stop it:
+**A service reports `unhealthy` in `docker compose ps`.**
+Inspect the recorded probe output:
+
+```bash
+docker inspect submitta-api-1 --format '{{json .State.Health}}'
+```
+
+**`Bind for 0.0.0.0:3000 failed: port is already allocated`.**
+Another process holds the port. Either stop it, or set an alternative in `.env`:
+
+```ini
+WEB_PORT=3100
+API_PORT=5162
+DB_PORT=5533
+```
+
+**The API container exits immediately in Production mode.**
+`Jwt__Key` is missing. The API refuses to start outside Development without a
+signing key — see [Section 2.8](#28-switching-to-production-mode).
+
+**Stale data after a schema change.**
+The database volume persists across `docker compose down`. Discard it:
+
+```bash
+docker compose down --volumes && docker compose up --build -d
+```
+
+**A code change is not reflected.**
+Images are built, not mounted. Rebuild the affected service:
+
+```bash
+docker compose up --build -d api
+```
+
+### 19.2 Local toolchain
+
+**`Failed to connect to 127.0.0.1:5432`.**
+PostgreSQL is not running. Start it with `brew services start postgresql@16` and
+confirm with `psql -l`.
+
+**`Address already in use` on 5062 or 3000.**
 
 ```bash
 lsof -ti:5062 | xargs kill
 ```
 
-Or run the API elsewhere with `dotnet run --project backend/src/AssignmentSystem.Api --urls http://localhost:5099`, remembering to point `API_BASE_URL` at the new port.
+**`dotnet: command not found` after `brew install --cask dotnet-sdk`.**
+The installer places `dotnet` in `/usr/local/share/dotnet`. Open a new terminal
+or add it to `PATH`.
 
-**`dotnet: command not found` after `brew install --cask dotnet-sdk`**
-The installer places `dotnet` in `/usr/local/share/dotnet`. Open a new terminal,
-or add it to your `PATH`.
-
-**Sign-in fails with "Invalid email or password"**
-Seeding may not have run — check the backend log for `Seeded 6 User row(s).`. If
-`Seed:Enabled` was set to `false`, or the database was created before seeding
-was enabled, reset it with `dropdb assignment_system && createdb assignment_system` and
-restart the API.
-
-**`No database connection string found`**
+**`No database connection string found`.**
 `backend/.env` is missing. Run `cp backend/.env.example backend/.env`.
 
-**The frontend loads but every page errors**
-The backend is not running, or is on a different port. Confirm
+**Sign-in fails with "Invalid email or password".**
+Seeding may not have run. Check the log for `Seeded 6 User row(s).`. If
+`Seed:Enabled` was set to `false`, reset the database and restart.
+
+**The frontend loads but every page errors.**
+The backend is not running or is on a different port. Confirm that
 <http://localhost:5062/health> returns `{"status":"healthy"}`.
 
-**Port 5433 conflicts with an existing PostgreSQL**
-Change the port PostgreSQL listens on, or point the connection string at the
-existing server, and
-update the port in `backend/.env` to match.
-
 ---
 
-## Assumptions
+## 20. Design assumptions
 
-The brief leaves these open; each was decided deliberately.
+The specification leaves the following open. Each was decided deliberately.
 
-**"Class" and "course" are the same entity.** The brief writes them together
-throughout — "class/course and subject" — so modelling them separately would
-invent a hierarchy it never describes. `Class` covers a school section
+**"Class" and "course" denote the same entity.** The specification writes them
+together throughout — "class/course and subject" — so modelling them separately
+would invent a hierarchy it never describes. `Class` covers a school section
 (`G10-A`) and a college course (`CSE-3101`) alike.
 
-**A student may be enrolled in several classes.** The brief covers schools and
-colleges, and a college student takes multiple courses at once — hence a join
-table rather than a column.
+**A student may be enrolled in several classes.** The specification covers
+schools and colleges, and a college student takes multiple courses concurrently
+— hence a join table rather than a column.
 
-**"Update a submission before the deadline, *if allowed*"** became two explicit
-flags per assignment: `AllowResubmission` (edit before the deadline) and
-`AllowLateSubmission` (submit after it, flagged late). The conditional in the
-brief needed somewhere concrete to live.
+**"Update a submission before the deadline, if allowed"** became two explicit
+flags per assignment: `AllowResubmission` for editing before the deadline, and
+`AllowLateSubmission` for submitting after it, flagged late.
 
 **Several teachers may share one offering.** Team teaching is common and the
-brief does not forbid it, so the teacher-to-offering link is many-to-many.
+specification does not preclude it, so the teacher-to-offering relationship is
+many-to-many.
 
 **Roles are fixed.** Three roles, stored as a native PostgreSQL enum rather than
-a lookup table. There is no runtime role management in the brief, so a join for
-three unchanging values would buy nothing.
+a lookup table. There is no runtime role management in the specification, so a
+join for three unchanging values would add cost without benefit.
 
-**Submissions are text plus an optional link.** File upload needs storage,
-virus scanning and a retention policy — well outside the brief. Attachment URLs
-are restricted to `http`/`https`, since a teacher is the one who would click
-them.
+**Submissions are text plus an optional link.** File upload requires storage,
+virus scanning and a retention policy, all outside the specification. Attachment
+URLs are restricted to `http` and `https`.
 
-**Supabase is used only as a PostgreSQL host.** Supabase Auth is deliberately
-unused: the brief requires JWT authentication implemented in the API, and using
-two auth systems would leave the question of which one is authoritative.
+**Supabase, where used, is only a PostgreSQL host.** Supabase Auth is
+deliberately unused: the specification requires JWT authentication implemented
+in the API, and operating two authentication systems would leave the question of
+which is authoritative.
 
-**The locale lives in a cookie, not the URL.** This is an authenticated
-dashboard, not indexable content, so per-locale URLs would buy nothing and cost
-a `[locale]` segment on every route.
+**Locale is held in a cookie, not the URL.** This is an authenticated dashboard
+rather than indexable content, so per-locale URLs would add a `[locale]` segment
+to every route without benefit.
 
 ---
 
-## Known limitations
+## 21. Known limitations
 
-Stated plainly rather than discovered later.
+Stated explicitly rather than left to be discovered.
 
 **No refresh-token reuse window.** Rotation is strict, so two tabs refreshing
 simultaneously can revoke each other's session. A short grace period on the
-previous token would fix it.
+previous token would resolve this.
 
-**TLS certificates are not verified** against hosted databases
-(`SslMode=Require` without chain validation), so setup works on machines without
-the provider's CA installed. A real deployment should pin it and use
-`VerifyFull`.
+**TLS certificates are not verified** against hosted databases (`SslMode=Require`
+without chain validation), so setup succeeds on machines lacking the provider's
+CA. A production deployment should use `VerifyFull`.
 
 **No integration test layer.** The tests cover the service layer thoroughly;
-controllers, middleware and the EF mapping are verified by hand and by the
+controllers, middleware and the EF mapping are verified manually and by the
 running application rather than by an automated `WebApplicationFactory` suite.
 
 **Rate limiting is in-process**, so it resets on restart and does not coordinate
-across instances. Distributed limiting would need Redis.
+across instances.
 
-**Audit logging is modelled but not written to.** The `AuditLogs` table and
-entity exist; the interceptor populates the per-row audit columns instead. Full
-change-history capture is not wired up.
+**Audit logging is modelled but not written to.** The `audit_logs` table and
+entity exist; the interceptor populates per-row audit columns instead. Full
+change-history capture is not implemented.
 
-**Bangla covers the interface, not the content.** All UI text, numerals, dates
-and relative times localise; assignment titles and student answers appear as
-written, which is correct — but there is no per-field translation.
+**Bangla covers the interface, not the content.** All interface text, numerals,
+dates and relative times localise; assignment titles and student answers appear
+as written.
 
 **The replay reconstructs text, not the formatted document.** Applying the log
-rebuilds what was written and which passages were pasted, which is what a replay
-is for; reproducing headings, tables and styling as they appeared at each moment
-would mean re-implementing ProseMirror's transform pipeline in the player. The
-finished document is shown in full alongside the replay.
+rebuilds what was written and which passages were pasted. Reproducing headings,
+tables and styling as they appeared at each moment would require re-implementing
+ProseMirror's transform pipeline in the player. The finished document is shown
+in full alongside the replay.
 
-**Attached question papers live in the database.** Stored as `bytea` rather
-than in object storage, because this project has none and adding one would mean
-another account and another set of credentials before anything runs. Fine for
-question papers; a deployment serving large files at volume should move to
-object storage and keep only the key. The bytes sit in their own table, so no
-assignment query ever loads them.
-
-**Only PDFs can be attached to an assignment.** Verified by reading the file's
-first bytes, so the format is genuinely checked rather than taken on trust —
-but it does mean a teacher with a Word document has to export first.
-
-**The student's answer editor has no file, image or video uploads.** There is no object storage
-in this project, so the editor covers text, structure and code but not media.
-Images can be embedded by URL. Adding uploads means adding a storage service and
-a signed-URL endpoint, not changing the editor.
+**No file uploads anywhere.** Neither for the brief nor for a student's answer.
+There is no object storage, and adding one would require another account and
+another set of credentials before anything runs. Images can be embedded by URL.
 
 **No real-time collaboration.** One author per submission, which is what the
-assignment requires. Tiptap supports collaborative editing through Yjs, but that
-needs a websocket server the project does not have.
+specification requires. Tiptap supports collaborative editing through Yjs, but
+that requires a WebSocket server this project does not have.
 
-**The editor UI is English only.** The rest of the interface localises to
-Bangla; the toolbar, slash palette, replay controls and chart labels were added
-late and their strings are not yet in the dictionaries.
+**The editor interface is English only.** The remainder of the interface
+localises to Bangla; the toolbar, slash palette, replay controls and chart
+labels were added late and their strings are not yet in the dictionaries.
 
-**Submissions recorded before the duplicate-transaction fix replay wrongly.**
+**Submissions recorded before the duplicate-transaction fix replay incorrectly.**
 An early build of the editor interpreted each change twice, so logs written then
-contain every character doubled — the replay shows `NNeettwwoorrkk`, and the
-derived word counts are inflated to match. The bug is fixed, but the affected
-logs cannot be repaired: the duplication is inside each recorded run, and
-un-doubling it by guessing would corrupt any word that genuinely repeats a
-letter. Rewriting a submission produces a correct log. Nothing silently
-rewrites stored events — the log is evidence, and this system is only worth
-anything if it stays untouched.
+contain every character doubled, and the derived word counts are inflated to
+match. The defect is fixed, but the affected logs cannot be repaired: the
+duplication is inside each recorded run, and un-doubling it by inference would
+corrupt any word that genuinely repeats a letter. Rewriting a submission
+produces a correct log. Nothing rewrites stored events, because the log is
+evidence and is only valuable if it remains untouched.
 
 **Notifications are in-app only.** No email and no browser push, so a student
-who never signs in is never told. Both would be additive — the audience and the
-wording are already worked out — but neither is here.
+who never signs in is never informed.
 
-**Live delivery assumes one instance.** Open connections are held in process, so
-a second instance behind a load balancer would only reach the clients attached
-to it. Everything would still be stored and still appear on refresh; only the
-"without refreshing" part would break.
+**Live delivery assumes a single instance.** Open connections are held in
+process, so a second instance behind a load balancer would reach only the
+clients attached to it. Everything would still be persisted and would still
+appear on refresh; only the "without refreshing" property would be lost.
 
 **Analytics approximate a word as five characters** for typing speed, the usual
-convention. It is a reasonable estimate across a document, not an exact count,
-and it will read differently for languages with other word lengths.
+convention. This is a reasonable estimate across a document rather than an exact
+count, and will read differently for languages with other word lengths.
+
+**The Compose stack is a single-host evaluation setup.** It defaults to
+Development mode, publishes Swagger, and uses a committed development signing
+key. It is not a production deployment topology: there is no reverse proxy, no
+TLS termination, and no secret manager.
 
 ---
 
-## Future improvements
+## 22. Future work
 
-- File attachments with real storage
-- Email or in-app notification when work is published, submitted or graded
+- File attachments backed by real object storage
+- Email or browser-push notification delivery
 - Integration tests via `WebApplicationFactory` against a containerised database
 - CSV export of marks per class
 - A grade-history view for students across a term
 - Distributed rate limiting and structured log shipping
+- Redis-backed notification stream for multi-instance deployment
 
 ---
 
 <p align="center">
-Built with ASP.NET Core 9, PostgreSQL, Next.js 16 and TypeScript.
+Built with ASP.NET Core 9, PostgreSQL, Next.js 16, TypeScript and Docker.
 </p>

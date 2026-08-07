@@ -1,0 +1,126 @@
+# ===========================================================================
+# Submitta — full stack, one command.
+#
+#   docker compose up --build
+#
+# Brings up PostgreSQL, the ASP.NET Core API and the Next.js frontend on a
+# private network. The API applies its own migrations and seeds the demo
+# accounts on first start, so nothing has to be created by hand.
+#
+#   Web        http://localhost:3000
+#   API        http://localhost:5062
+#   Swagger    http://localhost:5062/swagger
+#   PostgreSQL localhost:5433   (5433, so it cannot collide with a PostgreSQL
+#                                already installed on the host)
+#
+# Every published port is overridable — see .env.example.
+# ===========================================================================
+
+name: submitta
+
+services:
+  # -------------------------------------------------------------------------
+  # PostgreSQL
+  # -------------------------------------------------------------------------
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: assignment_system
+      POSTGRES_USER: submitta
+      # A throwaway credential for a database that exists only inside this
+      # compose network. It is written here on purpose so `docker compose up`
+      # needs no prior setup — the same reasoning as the demo password in
+      # appsettings.json. Override it with POSTGRES_PASSWORD in a local .env
+      # for anything that is not a local evaluation.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-submitta_local_only}
+
+    ports:
+      - "${DB_PORT:-5433}:5432"
+
+    volumes:
+      # Named volume, so data survives `docker compose down`. Use
+      # `down --volumes` to start from an empty database.
+      - db-data:/var/lib/postgresql/data
+
+    healthcheck:
+      # The API's depends_on waits on this. Without it the API would start
+      # against a PostgreSQL that is still initialising, fail its first
+      # migration, and exit.
+      test: ["CMD-SHELL", "pg_isready -U submitta -d assignment_system"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  # -------------------------------------------------------------------------
+  # API — ASP.NET Core 9
+  # -------------------------------------------------------------------------
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+
+    depends_on:
+      db:
+        condition: service_healthy
+
+    environment:
+      # Development is the default because this file is an evaluation stack:
+      # it publishes Swagger and uses the development signing key shipped in
+      # appsettings.Development.json, so the stack runs with no secret to
+      # generate first.
+      #
+      # For a real deployment set ASPNETCORE_ENVIRONMENT=Production and supply
+      # Jwt__Key — the API refuses to start outside Development without one.
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+
+      # `db` is the service name; Docker's DNS resolves it on this network.
+      ConnectionStrings__DefaultConnection: >-
+        Host=db;Port=5432;Database=assignment_system;Username=submitta;Password=${POSTGRES_PASSWORD:-submitta_local_only}
+
+      # Where a browser reaches the frontend. Only relevant to callers that
+      # hit the API directly; the frontend itself proxies server-side, which
+      # is not subject to CORS.
+      Cors__AllowedOrigins__0: http://localhost:${WEB_PORT:-3000}
+
+    # Optional. If a .env exists beside this file its contents are passed to
+    # the API, which is how Jwt__Key and other real secrets get in without
+    # being written into this committed file. `required: false` means the
+    # stack still starts when there is no .env at all.
+    env_file:
+      - path: .env
+        required: false
+
+    ports:
+      - "${API_PORT:-5062}:8080"
+
+  # -------------------------------------------------------------------------
+  # Web — Next.js 16
+  # -------------------------------------------------------------------------
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+
+    depends_on:
+      api:
+        # Waits for /health, so the first page load cannot land on an API that
+        # is still applying migrations.
+        condition: service_healthy
+
+    environment:
+      # Server-side only. The browser never calls this address: it talks to
+      # the Next.js server, which forwards to the API over the internal
+      # network with the session cookie attached. That is what keeps tokens
+      # out of the browser, and it is why `api` needs no public exposure.
+      API_BASE_URL: http://api:8080
+
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+
+volumes:
+  db-data:

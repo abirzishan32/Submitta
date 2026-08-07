@@ -19,7 +19,7 @@ public class Assignment : BaseEntity
 
     /// <summary>
     /// The brief as a rich document, when the teacher wrote one. Null for an
-    /// assignment typed as plain text or set entirely by an attached PDF.
+    /// assignment whose brief is plain text.
     /// </summary>
     public string? DescriptionJson { get; set; }
 
@@ -56,9 +56,6 @@ public class Assignment : BaseEntity
 
     // Navigation
     public ICollection<Submission> Submissions { get; set; } = [];
-
-    /// <summary>Files the teacher attached — usually the question paper.</summary>
-    public ICollection<AssignmentAttachment> Attachments { get; set; } = [];
 
     /// <summary>The rubric, when <see cref="GradingType"/> is Rubric. Empty otherwise.</summary>
     public ICollection<RubricCriterion> RubricCriteria { get; set; } = [];

@@ -4,30 +4,6 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace AssignmentSystem.Infrastructure.Persistence.Configurations;
 
-public class AssignmentAttachmentConfiguration : IEntityTypeConfiguration<AssignmentAttachment>
-{
-    public void Configure(EntityTypeBuilder<AssignmentAttachment> builder)
-    {
-        builder.HasKey(a => a.Id);
-
-        builder.Property(a => a.FileName).HasMaxLength(260).IsRequired();
-        builder.Property(a => a.ContentType).HasMaxLength(100).IsRequired();
-        builder.Property(a => a.Content).HasColumnType("bytea").IsRequired();
-
-        builder.HasOne(a => a.Assignment)
-            .WithMany(a => a.Attachments)
-            .HasForeignKey(a => a.AssignmentId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        builder.HasIndex(a => a.AssignmentId)
-            .HasDatabaseName("ix_assignment_attachments_assignment");
-
-        builder.ToTable(t => t.HasCheckConstraint(
-            "ck_assignment_attachments_size_positive",
-            "size_bytes > 0"));
-    }
-}
-
 public class RubricCriterionConfiguration : IEntityTypeConfiguration<RubricCriterion>
 {
     public void Configure(EntityTypeBuilder<RubricCriterion> builder)

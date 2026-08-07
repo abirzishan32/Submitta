@@ -39,7 +39,6 @@ public static class DependencyInjection
 
         // Teacher module
         services.AddScoped<IAssignmentService, AssignmentService>();
-        services.AddScoped<IAttachmentService, AttachmentService>();
         services.AddScoped<IGradingService, GradingService>();
 
         // Student module
