@@ -1248,47 +1248,7 @@ The backend is not running or is on a different port. Confirm that
 
 ---
 
-## 20. Design assumptions
-
-The specification leaves the following open. Each was decided deliberately.
-
-**"Class" and "course" denote the same entity.** The specification writes them
-together throughout — "class/course and subject" — so modelling them separately
-would invent a hierarchy it never describes. `Class` covers a school section
-(`G10-A`) and a college course (`CSE-3101`) alike.
-
-**A student may be enrolled in several classes.** The specification covers
-schools and colleges, and a college student takes multiple courses concurrently
-— hence a join table rather than a column.
-
-**"Update a submission before the deadline, if allowed"** became two explicit
-flags per assignment: `AllowResubmission` for editing before the deadline, and
-`AllowLateSubmission` for submitting after it, flagged late.
-
-**Several teachers may share one offering.** Team teaching is common and the
-specification does not preclude it, so the teacher-to-offering relationship is
-many-to-many.
-
-**Roles are fixed.** Three roles, stored as a native PostgreSQL enum rather than
-a lookup table. There is no runtime role management in the specification, so a
-join for three unchanging values would add cost without benefit.
-
-**Submissions are text plus an optional link.** File upload requires storage,
-virus scanning and a retention policy, all outside the specification. Attachment
-URLs are restricted to `http` and `https`.
-
-**Supabase, where used, is only a PostgreSQL host.** Supabase Auth is
-deliberately unused: the specification requires JWT authentication implemented
-in the API, and operating two authentication systems would leave the question of
-which is authoritative.
-
-**Locale is held in a cookie, not the URL.** This is an authenticated dashboard
-rather than indexable content, so per-locale URLs would add a `[locale]` segment
-to every route without benefit.
-
----
-
-## 21. Known limitations
+## 20. Known limitations
 
 Stated explicitly rather than left to be discovered.
 
@@ -1308,7 +1268,7 @@ in full alongside the replay.
 
 ---
 
-## 22. Future work
+## 21. Future work
 
 - File attachments backed by real object storage
 - Email or browser-push notification delivery
@@ -1319,7 +1279,3 @@ in full alongside the replay.
 - Redis-backed notification stream for multi-instance deployment
 
 ---
-
-<p align="center">
-Built with ASP.NET Core 9, PostgreSQL, Next.js 16, TypeScript and Docker.
-</p>
