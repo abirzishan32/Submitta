@@ -1292,10 +1292,6 @@ to every route without benefit.
 
 Stated explicitly rather than left to be discovered.
 
-**No refresh-token reuse window.** Rotation is strict, so two tabs refreshing
-simultaneously can revoke each other's session. A short grace period on the
-previous token would resolve this.
-
 **TLS certificates are not verified** against hosted databases (`SslMode=Require`
 without chain validation), so setup succeeds on machines lacking the provider's
 CA. A production deployment should use `VerifyFull`.
@@ -1304,60 +1300,11 @@ CA. A production deployment should use `VerifyFull`.
 controllers, middleware and the EF mapping are verified manually and by the
 running application rather than by an automated `WebApplicationFactory` suite.
 
-**Rate limiting is in-process**, so it resets on restart and does not coordinate
-across instances.
-
-**Audit logging is modelled but not written to.** The `audit_logs` table and
-entity exist; the interceptor populates per-row audit columns instead. Full
-change-history capture is not implemented.
-
-**Bangla covers the interface, not the content.** All interface text, numerals,
-dates and relative times localise; assignment titles and student answers appear
-as written.
-
 **The replay reconstructs text, not the formatted document.** Applying the log
 rebuilds what was written and which passages were pasted. Reproducing headings,
 tables and styling as they appeared at each moment would require re-implementing
 ProseMirror's transform pipeline in the player. The finished document is shown
 in full alongside the replay.
-
-**No file uploads anywhere.** Neither for the brief nor for a student's answer.
-There is no object storage, and adding one would require another account and
-another set of credentials before anything runs. Images can be embedded by URL.
-
-**No real-time collaboration.** One author per submission, which is what the
-specification requires. Tiptap supports collaborative editing through Yjs, but
-that requires a WebSocket server this project does not have.
-
-**The editor interface is English only.** The remainder of the interface
-localises to Bangla; the toolbar, slash palette, replay controls and chart
-labels were added late and their strings are not yet in the dictionaries.
-
-**Submissions recorded before the duplicate-transaction fix replay incorrectly.**
-An early build of the editor interpreted each change twice, so logs written then
-contain every character doubled, and the derived word counts are inflated to
-match. The defect is fixed, but the affected logs cannot be repaired: the
-duplication is inside each recorded run, and un-doubling it by inference would
-corrupt any word that genuinely repeats a letter. Rewriting a submission
-produces a correct log. Nothing rewrites stored events, because the log is
-evidence and is only valuable if it remains untouched.
-
-**Notifications are in-app only.** No email and no browser push, so a student
-who never signs in is never informed.
-
-**Live delivery assumes a single instance.** Open connections are held in
-process, so a second instance behind a load balancer would reach only the
-clients attached to it. Everything would still be persisted and would still
-appear on refresh; only the "without refreshing" property would be lost.
-
-**Analytics approximate a word as five characters** for typing speed, the usual
-convention. This is a reasonable estimate across a document rather than an exact
-count, and will read differently for languages with other word lengths.
-
-**The Compose stack is a single-host evaluation setup.** It defaults to
-Development mode, publishes Swagger, and uses a committed development signing
-key. It is not a production deployment topology: there is no reverse proxy, no
-TLS termination, and no secret manager.
 
 ---
 
