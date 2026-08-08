@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useState } from "react";
 import { Layers, Plus, Trash2, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 
@@ -14,6 +14,7 @@ import { FadeInUp } from "@/components/motion/primitives";
 import { OfferingFormDialog } from "./offering-form-dialog";
 import { AssignTeacherDialog } from "./assign-teacher-dialog";
 import { apiClient, ClientApiError } from "@/lib/api/client";
+import { useListReload } from "@/lib/api/use-list-reload";
 import { useTranslation } from "@/components/providers/i18n-provider";
 import type {
   AssignedTeacher,
@@ -48,8 +49,6 @@ export function OfferingsView({
   const [search, setSearch] = useState("");
   const [classId, setClassId] = useState("");
   const [page, setPage] = useState(1);
-  const [isPending, startTransition] = useTransition();
-
   const [creating, setCreating] = useState(false);
   const [assigningTo, setAssigningTo] = useState<OfferingDto | null>(null);
   const [deleting, setDeleting] = useState<OfferingDto | null>(null);
@@ -71,16 +70,7 @@ export function OfferingsView({
     setResult(data);
   }, [page, search, classId]);
 
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    if (!mounted) {
-      setMounted(true);
-      return;
-    }
-    startTransition(() => void load());
-  }, [load, mounted]);
-
-  const refresh = () => startTransition(() => void load());
+  const { isPending, reload: refresh } = useListReload(load);
   const hasFilters = Boolean(search || classId);
 
   function fail(error: unknown) {

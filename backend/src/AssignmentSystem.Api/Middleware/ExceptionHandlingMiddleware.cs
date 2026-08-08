@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using AssignmentSystem.Application.Common.Interfaces;
 using AssignmentSystem.Application.Common.Models;
 using AssignmentSystem.Domain.Exceptions;
 using FluentValidation;
@@ -14,7 +15,8 @@ namespace AssignmentSystem.Api.Middleware;
 public sealed class ExceptionHandlingMiddleware(
     RequestDelegate next,
     ILogger<ExceptionHandlingMiddleware> logger,
-    IHostEnvironment environment)
+    IHostEnvironment environment,
+    IDatabaseErrorTranslator databaseErrors)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -33,9 +35,20 @@ public sealed class ExceptionHandlingMiddleware(
         }
     }
 
-    private async Task HandleAsync(HttpContext context, Exception exception)
+    private async Task HandleAsync(HttpContext context, Exception originalException)
     {
         var traceId = context.TraceIdentifier;
+
+        // A constraint violation is an expected outcome that happened to be
+        // caught by the database rather than by the service check in front of
+        // it — a lost race, not a fault. Translating it here means it flows
+        // through the same mapping as if the service had rejected it, so the
+        // caller sees one consistent answer regardless of which layer noticed.
+        //
+        // The original is kept for logging: the translated exception explains
+        // what the client should be told, while the raw driver error is what a
+        // developer needs when the cause is not a race after all.
+        var exception = databaseErrors.Translate(originalException) ?? originalException;
 
         var (status, response) = exception switch
         {
@@ -70,9 +83,19 @@ public sealed class ExceptionHandlingMiddleware(
 
         if (status == HttpStatusCode.InternalServerError)
         {
-            logger.LogError(exception,
+            logger.LogError(originalException,
                 "Unhandled exception on {Method} {Path} (trace {TraceId})",
                 context.Request.Method, context.Request.Path, traceId);
+        }
+        else if (!ReferenceEquals(exception, originalException))
+        {
+            // Translated from a database error. Logged at warning with the
+            // original attached: the request was answered correctly, but a
+            // constraint firing repeatedly points at a check that is racing
+            // more often than it should.
+            logger.LogWarning(originalException,
+                "Database constraint translated to {ErrorType} on {Method} {Path} (trace {TraceId})",
+                exception.GetType().Name, context.Request.Method, context.Request.Path, traceId);
         }
         else
         {

@@ -25,6 +25,10 @@ public static class DependencyInjection
     {
         services.AddSingleton<IDateTimeProvider, DateTimeProvider>();
 
+        // Singleton because it holds no state and the exception middleware
+        // resolves its dependencies once, at application start.
+        services.AddSingleton<IDatabaseErrorTranslator, PostgresErrorTranslator>();
+
         services.AddScoped<AuditingSaveChangesInterceptor>();
 
         var connectionString = ConnectionStringResolver.Resolve(configuration);

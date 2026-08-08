@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileText } from "lucide-react";
 
@@ -12,6 +12,7 @@ import { SubmissionStatusBadge, StatusPill, LateBadge } from "@/components/commo
 import { FadeInUp } from "@/components/motion/primitives";
 import { Button } from "@/components/ui/button";
 import { apiClient } from "@/lib/api/client";
+import { useListReload } from "@/lib/api/use-list-reload";
 import { useTranslation } from "@/components/providers/i18n-provider";
 import { formatDateTime, formatMarks, formatRelative, deadlineTone } from "@/lib/format";
 import type {
@@ -41,7 +42,6 @@ export function StudentAssignmentsView({
   const [classId, setClassId] = useState<string>("");
   const [subjectId, setSubjectId] = useState<string>("");
   const [page, setPage] = useState(1);
-  const [isPending, startTransition] = useTransition();
 
   const load = useCallback(async () => {
     const data = await apiClient.get<PagedResult<StudentAssignment>>(
@@ -60,18 +60,7 @@ export function StudentAssignmentsView({
     setResult(data);
   }, [page, search, classId, subjectId, tab]);
 
-  // Skips the first run: the server already delivered page one with the page.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    if (!mounted) {
-      setMounted(true);
-      return;
-    }
-
-    startTransition(() => {
-      void load();
-    });
-  }, [load, mounted]);
+  const { isPending } = useListReload(load);
 
   const hasFilters = Boolean(search || classId || subjectId || tab !== "all");
 

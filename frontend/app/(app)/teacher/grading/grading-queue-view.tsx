@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Inbox } from "lucide-react";
 
@@ -11,6 +11,7 @@ import { FilterSelect } from "@/components/common/filter-select";
 import { SubmissionStatusBadge, LateBadge } from "@/components/common/status-badge";
 import { FadeInUp } from "@/components/motion/primitives";
 import { apiClient } from "@/lib/api/client";
+import { useListReload } from "@/lib/api/use-list-reload";
 import { useTranslation } from "@/components/providers/i18n-provider";
 import { formatRelative, formatMarks, initialsOf } from "@/lib/format";
 import type {
@@ -45,8 +46,6 @@ export function GradingQueueView({
   const [offeringId, setOfferingId] = useState("");
   const [late, setLate] = useState("");
   const [page, setPage] = useState(1);
-  const [isPending, startTransition] = useTransition();
-
   const load = useCallback(async () => {
     const data = await apiClient.get<PagedResult<SubmissionSummary>>(
       "/api/v1/grading/submissions",
@@ -64,14 +63,7 @@ export function GradingQueueView({
     setResult(data);
   }, [page, search, status, offeringId, late]);
 
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    if (!mounted) {
-      setMounted(true);
-      return;
-    }
-    startTransition(() => void load());
-  }, [load, mounted]);
+  const { isPending } = useListReload(load);
 
   const hasFilters = Boolean(search || status || offeringId || late);
 

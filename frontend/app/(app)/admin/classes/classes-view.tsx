@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useState } from "react";
 import { GraduationCap, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -20,6 +20,7 @@ import { StatusPill } from "@/components/common/status-badge";
 import { FadeInUp } from "@/components/motion/primitives";
 import { ClassFormDialog } from "./class-form-dialog";
 import { apiClient, ClientApiError } from "@/lib/api/client";
+import { useListReload } from "@/lib/api/use-list-reload";
 import { useTranslation } from "@/components/providers/i18n-provider";
 import type { ClassDto, PagedResult } from "@/lib/api/types";
 
@@ -30,8 +31,6 @@ export function ClassesView({ initial }: { initial: PagedResult<ClassDto> }) {
   const [search, setSearch] = useState("");
   const [active, setActive] = useState("");
   const [page, setPage] = useState(1);
-  const [isPending, startTransition] = useTransition();
-
   const [editing, setEditing] = useState<ClassDto | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<ClassDto | null>(null);
@@ -48,16 +47,7 @@ export function ClassesView({ initial }: { initial: PagedResult<ClassDto> }) {
     setResult(data);
   }, [page, search, active]);
 
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    if (!mounted) {
-      setMounted(true);
-      return;
-    }
-    startTransition(() => void load());
-  }, [load, mounted]);
-
-  const refresh = () => startTransition(() => void load());
+  const { isPending, reload: refresh } = useListReload(load);
   const hasFilters = Boolean(search || active);
 
   const columns: Column<ClassDto>[] = [

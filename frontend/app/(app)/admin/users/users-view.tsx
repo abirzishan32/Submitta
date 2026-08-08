@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useState } from "react";
 import {
   KeyRound,
   MoreHorizontal,
@@ -31,6 +31,7 @@ import { FadeInUp } from "@/components/motion/primitives";
 import { UserFormDialog } from "./user-form-dialog";
 import { ResetPasswordDialog } from "./reset-password-dialog";
 import { apiClient, ClientApiError } from "@/lib/api/client";
+import { useListReload } from "@/lib/api/use-list-reload";
 import { useTranslation } from "@/components/providers/i18n-provider";
 import { formatDate, formatRelative, initialsOf } from "@/lib/format";
 import type { PagedResult, UserDto, UserRole } from "@/lib/api/types";
@@ -43,8 +44,6 @@ export function UsersView({ initial }: { initial: PagedResult<UserDto> }) {
   const [role, setRole] = useState("");
   const [active, setActive] = useState("");
   const [page, setPage] = useState(1);
-  const [isPending, startTransition] = useTransition();
-
   const [editing, setEditing] = useState<UserDto | null>(null);
   const [creating, setCreating] = useState(false);
   const [resetting, setResetting] = useState<UserDto | null>(null);
@@ -65,16 +64,7 @@ export function UsersView({ initial }: { initial: PagedResult<UserDto> }) {
     setResult(data);
   }, [page, search, role, active]);
 
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    if (!mounted) {
-      setMounted(true);
-      return;
-    }
-    startTransition(() => void load());
-  }, [load, mounted]);
-
-  const refresh = () => startTransition(() => void load());
+  const { isPending, reload: refresh } = useListReload(load);
 
   const hasFilters = Boolean(search || role || active);
 

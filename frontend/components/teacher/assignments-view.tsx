@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ClipboardList, Plus } from "lucide-react";
@@ -13,6 +13,7 @@ import { FilterSelect } from "@/components/common/filter-select";
 import { AssignmentStatusBadge } from "@/components/common/status-badge";
 import { FadeInUp } from "@/components/motion/primitives";
 import { apiClient } from "@/lib/api/client";
+import { useListReload } from "@/lib/api/use-list-reload";
 import { useTranslation } from "@/components/providers/i18n-provider";
 import { formatDateTime, formatRelative, deadlineTone } from "@/lib/format";
 import type {
@@ -48,8 +49,6 @@ export function AssignmentsView({
   const [status, setStatus] = useState("");
   const [offeringId, setOfferingId] = useState("");
   const [page, setPage] = useState(1);
-  const [isPending, startTransition] = useTransition();
-
   const load = useCallback(async () => {
     const data = await apiClient.get<PagedResult<AssignmentDto>>("/api/v1/assignments", {
       page,
@@ -63,14 +62,7 @@ export function AssignmentsView({
     setResult(data);
   }, [page, search, status, offeringId]);
 
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    if (!mounted) {
-      setMounted(true);
-      return;
-    }
-    startTransition(() => void load());
-  }, [load, mounted]);
+  const { isPending } = useListReload(load);
 
   const hasFilters = Boolean(search || status || offeringId);
 

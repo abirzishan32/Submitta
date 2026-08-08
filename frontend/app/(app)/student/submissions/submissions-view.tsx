@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { ChevronRight, FileCheck, MessageSquare } from "lucide-react";
 
@@ -14,6 +14,7 @@ import {
 } from "@/components/common/status-badge";
 import { Stagger, StaggerItem } from "@/components/motion/primitives";
 import { apiClient } from "@/lib/api/client";
+import { useListReload } from "@/lib/api/use-list-reload";
 import { useTranslation } from "@/components/providers/i18n-provider";
 import { formatDateTime, formatRelative, formatMarks } from "@/lib/format";
 import type { PagedResult, StudentSubmission } from "@/lib/api/types";
@@ -33,8 +34,6 @@ export function SubmissionsView({
 
   const [result, setResult] = useState(initial);
   const [page, setPage] = useState(1);
-  const [, startTransition] = useTransition();
-
   const load = useCallback(async () => {
     const data = await apiClient.get<PagedResult<StudentSubmission>>(
       "/api/v1/student/submissions",
@@ -44,14 +43,7 @@ export function SubmissionsView({
     setResult(data);
   }, [page]);
 
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    if (!mounted) {
-      setMounted(true);
-      return;
-    }
-    startTransition(() => void load());
-  }, [load, mounted]);
+  useListReload(load);
 
   return (
     <div className="space-y-5">

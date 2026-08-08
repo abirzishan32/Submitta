@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useState } from "react";
 import { Trash2, UserPlus, Users } from "lucide-react";
 import { toast } from "sonner";
 
@@ -13,6 +13,7 @@ import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { FadeInUp } from "@/components/motion/primitives";
 import { EnrollDialog } from "./enroll-dialog";
 import { apiClient, ClientApiError } from "@/lib/api/client";
+import { useListReload } from "@/lib/api/use-list-reload";
 import { useTranslation } from "@/components/providers/i18n-provider";
 import { formatDate, initialsOf } from "@/lib/format";
 import type { ClassDto, EnrollmentDto, PagedResult, UserDto } from "@/lib/api/types";
@@ -32,8 +33,6 @@ export function EnrollmentsView({
   const [search, setSearch] = useState("");
   const [classId, setClassId] = useState("");
   const [page, setPage] = useState(1);
-  const [isPending, startTransition] = useTransition();
-
   const [enrolling, setEnrolling] = useState(false);
   const [removing, setRemoving] = useState<EnrollmentDto | null>(null);
 
@@ -51,16 +50,7 @@ export function EnrollmentsView({
     setResult(data);
   }, [page, search, classId]);
 
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    if (!mounted) {
-      setMounted(true);
-      return;
-    }
-    startTransition(() => void load());
-  }, [load, mounted]);
-
-  const refresh = () => startTransition(() => void load());
+  const { isPending, reload: refresh } = useListReload(load);
   const hasFilters = Boolean(search || classId);
 
   const columns: Column<EnrollmentDto>[] = [
