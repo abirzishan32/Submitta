@@ -360,8 +360,16 @@ export const en = {
     value: "Value",
     dataType: "Type",
     visibility: "Visibility",
-    public: "Public",
-    private: "Admin only",
+    // "Public" read as "anonymous", which this never meant — the flag marks a
+    // setting any signed-in role may read, and the endpoint serving them was
+    // renamed from /settings/public to /settings/shared for the same reason.
+    allRoles: "All roles",
+    adminOnly: "Admin only",
+    areaApp: "Institution",
+    areaAuth: "Registration and access",
+    areaGrading: "Grading",
+    areaSubmission: "Submissions",
+    areaOther: "Other",
     updated: "Setting updated.",
     appearance: "Appearance",
     appearanceHint: "Theme and language preferences are stored on this device.",
