@@ -26,11 +26,11 @@ const NotebookScene = dynamic(() => import("./notebook-scene"), {
 
 /** Captions, each owning a slice of the timeline. */
 const CAPTIONS = [
-  { from: 0.0, to: 0.16, label: "01 — The brief", text: "A teacher sets the work against a class and a subject." },
-  { from: 0.16, to: 0.36, label: "02 — Open", text: "It reaches every student enrolled, the moment it is published." },
-  { from: 0.36, to: 0.62, label: "03 — The work", text: "Students write, revise, and submit before the deadline." },
-  { from: 0.62, to: 0.86, label: "04 — The marking", text: "Marks and feedback come back against the same page." },
-  { from: 0.86, to: 1.01, label: "05 — On record", text: "Every version kept, nothing lost between inbox and spreadsheet." },
+  { from: 0.0, to: 0.16, label: "01 — The brief", text: "A teacher sets the work against a class and a subject.", colour: "#fbb000" },
+  { from: 0.16, to: 0.36, label: "02 — Open", text: "It reaches every student enrolled, the moment it is published.", colour: "#fbb000" },
+  { from: 0.36, to: 0.62, label: "03 — The work", text: "Students write, revise, and submit before the deadline.", colour: "#fbb000" },
+  { from: 0.62, to: 0.86, label: "04 — The marking", text: "Marks and feedback come back against the same page.", colour: "#fbb000" },
+  { from: 0.86, to: 1.01, label: "05 — On record", text: "Every version kept, nothing lost between inbox and spreadsheet.", colour: "#fbb000" },
 ] as const;
 
 export function Cinematic({ handwritingFont }: { handwritingFont: string }) {
@@ -138,10 +138,16 @@ export function Cinematic({ handwritingFont }: { handwritingFont: string }) {
                 transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
                 className="mx-auto flex max-w-5xl flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between"
               >
-                <span className="font-[family-name:var(--font-mono-code)] text-[0.68rem] uppercase tracking-[0.2em] text-[#f4f1ea]/40">
+                <span
+                  className="font-[family-name:var(--font-mono-code)] text-[0.68rem] uppercase tracking-[0.2em]"
+                  style={{ color: caption.colour, opacity: 0.55 }}
+                >
                   {caption.label}
                 </span>
-                <p className="max-w-md text-balance text-[0.95rem] leading-relaxed text-[#f4f1ea]/78 sm:text-right">
+                <p
+                  className="max-w-md text-balance text-[0.95rem] leading-relaxed sm:text-right"
+                  style={{ color: caption.colour, opacity: 0.85 }}
+                >
                   {caption.text}
                 </p>
               </motion.div>
