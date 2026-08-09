@@ -1,6 +1,7 @@
 using AssignmentSystem.Application.Features.Student;
 using AssignmentSystem.Domain.Enums;
 using AssignmentSystem.Domain.Exceptions;
+using AssignmentSystem.Infrastructure.Security;
 using AssignmentSystem.UnitTests.Infrastructure;
 using FluentAssertions;
 
@@ -13,7 +14,7 @@ namespace AssignmentSystem.UnitTests;
 public class SubmissionWorkflowTests
 {
     private static StudentService Subject(TestContext ctx) =>
-        new(ctx.Db, ctx.CurrentUser, ctx.Clock, ctx.Notifications,
+        new(ctx.Db, new BCryptPasswordHasher(), ctx.CurrentUser, ctx.Clock, ctx.Notifications,
             TestContext.Logger<StudentService>());
 
     // --- Visibility --------------------------------------------------------

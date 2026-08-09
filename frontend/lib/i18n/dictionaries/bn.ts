@@ -382,6 +382,16 @@ export const bn: Dictionary = {
     accountDetails: "অ্যাকাউন্টের তথ্য",
     security: "নিরাপত্তা",
     memberSince: "যুক্ত হয়েছেন",
+    dangerZone: "বিপজ্জনক এলাকা",
+    deleteAccount: "অ্যাকাউন্ট মুছে ফেলুন",
+    deleteAccountHint:
+      "আপনার অ্যাকাউন্ট স্থায়ীভাবে বন্ধ করে দেয়। এটি ফিরিয়ে আনা যাবে না, এবং শুধুমাত্র শিক্ষার্থীদের জন্য উপলব্ধ।",
+    deleteAccountDialogTitle: "আপনার অ্যাকাউন্ট মুছে ফেলুন",
+    deleteAccountDialogDescription:
+      "এটি স্থায়ী। নিশ্চিত করতে আপনার পাসওয়ার্ড দিন, তারপর নিচের বাক্যটি হুবহু টাইপ করুন।",
+    deleteAccountConfirmLabel: "নিশ্চিত করতে বাক্যটি টাইপ করুন",
+    deleteAccountConfirmMismatch: "এটি হুবহু মিলছে না। বড়/ছোট হাতের অক্ষর ও স্পেস পরীক্ষা করুন।",
+    deleteAccountSuccess: "আপনার অ্যাকাউন্ট মুছে ফেলা হয়েছে।",
   },
 
   errors: {

@@ -121,6 +121,17 @@ public sealed class StudentAssignmentListQuery : PaginationQuery
     public bool? PastDeadline { get; set; }
 }
 
+/// <summary>
+/// Closes the caller's own account.
+///
+/// Two confirmations, not one: <paramref name="Password"/> is the actual
+/// security check — proof the request comes from the account's owner, not a
+/// hijacked session. <paramref name="Confirmation"/> is not a security
+/// boundary at all; it exists to make an irreversible action require a
+/// deliberate sentence rather than a single click that could be a slip.
+/// </summary>
+public sealed record DeleteAccountRequest(string Password, string Confirmation);
+
 /// <summary>Headline figures for the student dashboard.</summary>
 public sealed record StudentDashboardDto(
     int TotalAssignments,

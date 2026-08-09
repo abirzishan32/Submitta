@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Loader2, LogOut, ShieldCheck } from "lucide-react";
+import { Loader2, LogOut, ShieldCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import { StatusPill } from "@/components/common/status-badge";
 import { FadeInUp } from "@/components/motion/primitives";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { LanguageSwitcher } from "@/components/layout/language-switcher";
+import { DeleteAccountDialog } from "./delete-account-dialog";
 import { apiClient, ClientApiError } from "@/lib/api/client";
 import { useTranslation } from "@/components/providers/i18n-provider";
 import { formatRelative, initialsOf } from "@/lib/format";
@@ -27,6 +28,7 @@ export function ProfileView({ profile }: { profile: UserProfile }) {
   const router = useRouter();
 
   const [signingOutAll, setSigningOutAll] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   const schema = z
     .object({
@@ -235,8 +237,43 @@ export function ProfileView({ profile }: { profile: UserProfile }) {
               </Button>
             </div>
           </div>
+
+          {/* Only a student may close their own account — a teacher or
+              administrator's absence would strand the classes and work that
+              depend on them, so that path only exists through an admin who can
+              weigh what else needs to happen first. */}
+          {profile.role === "Student" ? (
+            <div className="rounded-lg border border-destructive/25 bg-card p-5">
+              <div className="flex items-center gap-1.5 pb-4">
+                <Trash2 className="size-4 text-destructive" aria-hidden />
+                <h2 className="text-sm font-semibold text-destructive">
+                  {t.profile.dangerZone}
+                </h2>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{t.profile.deleteAccount}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t.profile.deleteAccountHint}
+                  </p>
+                </div>
+
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setDeleteDialogOpen(true)}
+                >
+                  <Trash2 className="size-3.5" aria-hidden />
+                  {t.profile.deleteAccount}
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </FadeInUp>
       </div>
+
+      <DeleteAccountDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen} />
     </div>
   );
 }

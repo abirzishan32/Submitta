@@ -37,6 +37,9 @@ public interface IStudentService
         Guid submissionId, UpdateSubmissionRequest request, CancellationToken ct = default);
 
     Task<StudentDashboardDto> GetDashboardAsync(CancellationToken ct = default);
+
+    /// <summary>Permanently closes the caller's own account.</summary>
+    Task DeleteMyAccountAsync(DeleteAccountRequest request, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -50,6 +53,7 @@ public interface IStudentService
 /// </summary>
 public sealed class StudentService(
     IAppDbContext context,
+    IPasswordHasher passwordHasher,
     ICurrentUser currentUser,
     IDateTimeProvider dateTime,
     INotificationDispatcher notifications,
@@ -405,6 +409,60 @@ public sealed class StudentService(
             OverdueCount: stats.Count(s => s.Submission == null && s.Deadline < now),
             AverageMarkPercentage: averagePercentage,
             DueSoon: dueSoon);
+    }
+
+    /// <summary>
+    /// Closes the caller's own account.
+    ///
+    /// Refused while academic history is attached to it. Both links are the
+    /// same reason twice: a soft delete hides the row behind the global query
+    /// filter, so anything still pointing at this student — a class roster, a
+    /// teacher's grading list — would lose a name rather than showing who it
+    /// belonged to. Someone with real history closes their account through an
+    /// administrator, who can weigh that against removing the enrolment or
+    /// keeping the record.
+    /// </summary>
+    public async Task DeleteMyAccountAsync(DeleteAccountRequest request, CancellationToken ct = default)
+    {
+        var studentId = currentUser.RequireUserId();
+
+        var user = await context.Users
+            .FirstOrDefaultAsync(u => u.Id == studentId, ct)
+            ?? throw new NotFoundException("User", studentId);
+
+        if (!passwordHasher.Verify(request.Password, user.PasswordHash))
+        {
+            throw new UnauthorizedException("Password is incorrect.");
+        }
+
+        if (await context.Submissions.AnyAsync(s => s.StudentId == studentId, ct))
+        {
+            throw new ConflictException(
+                "You have submitted work that is recorded against your account. "
+                + "Contact an administrator to close it instead.");
+        }
+
+        if (await context.Enrollments.AnyAsync(e => e.StudentId == studentId, ct))
+        {
+            throw new ConflictException(
+                "You are still enrolled in a class. Contact an administrator to remove "
+                + "your enrolment before deleting your account.");
+        }
+
+        var tokens = await context.RefreshTokens
+            .Where(t => t.UserId == studentId && t.RevokedAt == null)
+            .ToListAsync(ct);
+
+        foreach (var token in tokens)
+        {
+            token.RevokedAt = dateTime.UtcNow;
+        }
+
+        // Soft delete — the interceptor rewrites this as an update.
+        context.Users.Remove(user);
+        await context.SaveChangesAsync(ct);
+
+        logger.LogInformation("Student {StudentId} deleted their own account.", studentId);
     }
 
     // -----------------------------------------------------------------------

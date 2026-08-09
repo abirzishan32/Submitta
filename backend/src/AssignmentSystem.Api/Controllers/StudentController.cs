@@ -128,4 +128,26 @@ public sealed class StudentController(IStudentService student) : ControllerBase
         => Ok(ApiResponse<StudentSubmissionDto>.Ok(
             await student.UpdateSubmissionAsync(submissionId, request, ct),
             "Submission updated."));
+
+    /// <summary>Permanently closes the caller's own account.</summary>
+    /// <remarks>
+    /// Restricted to students by the policy on this controller — a teacher or
+    /// administrator account is never reachable through this route. Requires the
+    /// current password and the confirmation phrase, typed exactly. Refused
+    /// while submitted work or an active enrolment is still attached to the
+    /// account; an administrator handles that case instead.
+    /// </remarks>
+    /// <response code="401">Password is incorrect.</response>
+    /// <response code="409">Submitted work or an active enrolment is still attached to this account.</response>
+    /// <response code="422">The confirmation phrase does not match exactly.</response>
+    [HttpPost("account/delete")]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> DeleteAccount(DeleteAccountRequest request, CancellationToken ct)
+    {
+        await student.DeleteMyAccountAsync(request, ct);
+        return Ok(ApiResponse.Ok("Your account has been deleted."));
+    }
 }

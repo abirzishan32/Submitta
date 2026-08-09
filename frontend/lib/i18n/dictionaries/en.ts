@@ -375,6 +375,16 @@ export const en = {
     accountDetails: "Account details",
     security: "Security",
     memberSince: "Member since",
+    dangerZone: "Danger zone",
+    deleteAccount: "Delete account",
+    deleteAccountHint:
+      "Permanently closes your account. This cannot be undone, and is only available to students.",
+    deleteAccountDialogTitle: "Delete your account",
+    deleteAccountDialogDescription:
+      "This is permanent. Enter your password, then type the sentence below exactly to confirm.",
+    deleteAccountConfirmLabel: "Type the sentence to confirm",
+    deleteAccountConfirmMismatch: "This does not match exactly. Check capitalisation and spacing.",
+    deleteAccountSuccess: "Your account has been deleted.",
   },
 
   errors: {

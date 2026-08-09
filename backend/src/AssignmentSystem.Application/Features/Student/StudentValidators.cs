@@ -51,3 +51,24 @@ public sealed class UpdateSubmissionRequestValidator : AbstractValidator<UpdateS
         RuleFor(x => x.ContentJson).RichContent();
     }
 }
+
+public sealed class DeleteAccountRequestValidator : AbstractValidator<DeleteAccountRequest>
+{
+    /// <summary>
+    /// The sentence a student must type to close their own account. Compared
+    /// exactly (after trimming surrounding whitespace only) rather than
+    /// case-insensitively — it is meant to take a moment of deliberate typing,
+    /// not to be satisfied by whatever a browser's autofill happens to offer.
+    /// </summary>
+    public const string RequiredPhrase = "I want to delete my account";
+
+    public DeleteAccountRequestValidator()
+    {
+        RuleFor(x => x.Password)
+            .NotEmpty().WithMessage("Enter your password to confirm it's you.");
+
+        RuleFor(x => x.Confirmation)
+            .Must(text => text.Trim() == RequiredPhrase)
+            .WithMessage($"Type \"{RequiredPhrase}\" exactly to confirm.");
+    }
+}
