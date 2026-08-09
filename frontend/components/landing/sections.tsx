@@ -179,7 +179,7 @@ function Product() {
     <section id="product" className="scroll-mt-20 bg-[#faf8f4] px-6 py-28 sm:px-10 lg:py-36 dark:bg-[#101318]">
       <div className="mx-auto max-w-6xl">
         <Reveal>
-          <SectionMark index="03">The interface</SectionMark>
+          <SectionMark index="03">Interface</SectionMark>
         </Reveal>
 
         <Reveal delay={0.05}>

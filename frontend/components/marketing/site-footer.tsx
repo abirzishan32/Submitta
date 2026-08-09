@@ -15,7 +15,6 @@ const COLUMNS = [
     links: [
       { label: "Features", href: "#features" },
       { label: "How it works", href: "#how-it-works" },
-      { label: "Security", href: "#security" },
       { label: "Sign in", href: "/login" },
     ],
   },
@@ -24,7 +23,6 @@ const COLUMNS = [
     links: [
       { label: "API reference", href: "http://localhost:5062/swagger", external: true },
       { label: "Health check", href: "http://localhost:5062/health", external: true },
-      { label: "Built with", href: "#stack" },
     ],
   },
 ] as const;
@@ -47,8 +45,7 @@ export function SiteFooter() {
             </Link>
 
             <p className="max-w-xs pt-3.5 text-sm leading-relaxed text-muted-foreground text-pretty">
-              Assignment and submission management for schools and colleges —
-              deadlines, marks and feedback in one place.
+              Assignment and submission management for schools and colleges.
             </p>
           </div>
 
@@ -85,16 +82,6 @@ export function SiteFooter() {
           ))}
         </div>
 
-        <div className="mt-12 flex flex-col gap-3 border-t border-border pt-6 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs text-muted-foreground">
-            © {year} Submitta. Built as a recruitment project for OnnoRokom
-            Projukti Limited.
-          </p>
-
-          <p className="text-xs text-muted-foreground">
-            The API links above assume the backend is running locally.
-          </p>
-        </div>
       </div>
     </footer>
   );

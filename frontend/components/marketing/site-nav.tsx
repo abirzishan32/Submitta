@@ -19,7 +19,7 @@ import type { UserProfile } from "@/lib/api/types";
 const LINKS = [
   { href: "#features", label: "Features" },
   { href: "#how-it-works", label: "How it works" },
-  { href: "#product", label: "The interface" },
+  { href: "#product", label: "Interface" },
   { href: "#start", label: "Get the demo" },
 ] as const;
 
