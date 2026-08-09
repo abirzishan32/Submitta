@@ -44,6 +44,29 @@ const ROLE_HOME: Record<string, string> = {
   Student: "/student",
 };
 
+/**
+ * Sections that belong to exactly one role.
+ *
+ * Checked here so a signed-in user asking for someone else's section is turned
+ * away before the page renders — otherwise it would render, call an API that
+ * correctly answers 403, and collapse into a generic "something went wrong".
+ * The person is not doing anything dangerous; they should be told, not shown a
+ * crash.
+ *
+ * This is presentation, not protection. The role comes from a cookie the client
+ * can edit, so it decides which page to show and nothing else. Every request the
+ * page would make is still authorised by the API from the signed token, which is
+ * where access is actually decided.
+ */
+const ROLE_SECTIONS: ReadonlyArray<{ prefix: string; role: string }> = [
+  { prefix: "/admin", role: "Admin" },
+  { prefix: "/teacher", role: "Teacher" },
+  { prefix: "/student", role: "Student" },
+];
+
+/** Where the role gate sends someone who has landed in the wrong section. */
+const FORBIDDEN_PATH = "/forbidden";
+
 export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
@@ -95,6 +118,21 @@ export async function proxy(request: NextRequest) {
     );
   }
 
+  // Signed in, but asking for a section that belongs to another role.
+  if (hasSession) {
+    const section = ROLE_SECTIONS.find(
+      ({ prefix }) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+    );
+
+    if (section && roleOf(request) !== section.role) {
+      return finalise(
+        NextResponse.redirect(new URL(FORBIDDEN_PATH, request.url)),
+        request,
+        refreshed,
+      );
+    }
+  }
+
   // A refreshed access token has to reach this same request, not just the next
   // one — the page about to render is what needs it.
   if (refreshed) {
@@ -121,20 +159,29 @@ export async function proxy(request: NextRequest) {
 }
 
 /**
- * Reads the role from the (non-httpOnly) user cookie purely to choose a landing
- * page. Tampering with it changes nothing beyond which page renders first —
- * every endpoint behind it re-checks the role from the signed token.
+ * Reads the role from the (non-httpOnly) user cookie.
+ *
+ * Used to choose a landing page and to keep one role out of another's section.
+ * Tampering with it changes neither what the API returns nor what it will hand
+ * over — every endpoint re-derives the role from the signed token — so the worst
+ * an edited cookie achieves is a page that renders and then reports 403.
  */
-function homeFor(request: NextRequest): string {
+function roleOf(request: NextRequest): string | null {
   const raw = request.cookies.get(USER_COOKIE)?.value;
-  if (!raw) return "/student";
+  if (!raw) return null;
 
   try {
     const user = JSON.parse(decodeURIComponent(raw)) as { role?: string };
-    return ROLE_HOME[user.role ?? ""] ?? "/student";
+    return user.role ?? null;
   } catch {
-    return "/student";
+    // A malformed cookie is treated as no role rather than a crash.
+    return null;
   }
+}
+
+/** The signed-in user's own section, for redirects away from somewhere else. */
+function homeFor(request: NextRequest): string {
+  return ROLE_HOME[roleOf(request) ?? ""] ?? "/student";
 }
 
 interface RefreshedSession {

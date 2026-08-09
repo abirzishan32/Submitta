@@ -44,8 +44,9 @@ classes, subjects and teaching allocations.
 
 **Appendices**
 
-20. [Known limitations](#20-known-limitations)
-21. [Future work](#21-future-work)
+20. [Assumptions](#20-assumptions)
+21. [Known limitations](#21-known-limitations)
+22. [Future work](#22-future-work)
 
 ---
 
@@ -223,7 +224,7 @@ docker compose logs -f web
 docker build --target test ./backend
 ```
 
-Expected: `Passed! - Failed: 0, Passed: 152, Skipped: 0, Total: 152`
+Expected: `Passed! - Failed: 0, Passed: 160, Skipped: 0, Total: 160`
 
 ### If a port is already in use
 
@@ -897,7 +898,7 @@ the index rather than fragmenting it as random v4 values do.
 │   │   │   └── Security/                     BCrypt, JWT
 │   │   └── AssignmentSystem.Api/             controllers, middleware
 │   └── tests/
-│       └── AssignmentSystem.UnitTests/       152 xUnit tests
+│       └── AssignmentSystem.UnitTests/       160 xUnit tests
 └── frontend/
     ├── Dockerfile                Multi-stage: deps → build → runtime
     ├── .dockerignore
@@ -1402,7 +1403,7 @@ Docker, `0 table(s) still unprotected` is reported at every startup.
 
 ## 17. Testing
 
-152 xUnit tests covering the service layer, domain rules and authorization
+160 xUnit tests covering the service layer, domain rules and authorization
 boundaries.
 
 In Docker, on the same SDK image used to compile the application:
@@ -1420,7 +1421,7 @@ dotnet test backend/AssignmentSystem.sln
 Current result:
 
 ```
-Passed!  - Failed: 0, Passed: 152, Skipped: 0, Total: 152
+Passed!  - Failed: 0, Passed: 160, Skipped: 0, Total: 160
 ```
 
 Tests use the EF Core in-memory provider with the auditing interceptor wired in,
@@ -1446,7 +1447,7 @@ with an **Authorize** button: sign in via `POST /api/v1/auth/login`, paste the
 | Student | `/api/v1/student` | Student |
 | Editor | `/api/v1/submissions/{id}` | Author writes; author and their teacher read |
 | Notifications | `/api/v1/notifications` | Any authenticated user |
-| Settings | `/api/v1/settings` | Public subset for all; full for Administrator |
+| Settings | `/api/v1/settings` | `/shared` for any signed-in role; full list and updates for Administrator |
 
 ### 18.1 Response envelope
 
@@ -1553,7 +1554,52 @@ The backend is not running or is on a different port. Confirm that
 
 ---
 
-## 20. Known limitations
+## 20. Assumptions
+
+Where the brief left something open, this is what was decided and why.
+
+**"Class/course" is one idea, not two.** The brief uses both words, so they are
+modelled as a single `Class`, paired with a `Subject` through a `ClassSubject`
+offering. An assignment targets one offering, which is how it belongs to a
+specific class *and* subject through a single reference.
+
+**Roles are exclusive, not ranked.** An Admin oversees teaching — every
+assignment and submission is visible — but never enters a student's own pages.
+`/student/*` is personal, so an Admin receives 403 there rather than a view of
+someone else's work.
+
+**"Update a submission before the deadline, if allowed"** became two independent
+per-assignment switches, `AllowResubmission` and `AllowLateSubmission`. The
+deadline always binds on edits; work a teacher has returned is always editable.
+
+**One submission per student per assignment**, revised in place with version
+history, rather than a stack of separate attempts. A unique index enforces it.
+
+**Records outlive convenience.** Once work has been submitted, its assignment can
+no longer be deleted or pulled back to draft — archiving is offered instead, so
+marks and feedback are never destroyed to tidy a list.
+
+**Accounts are administered, not open.** Self-registration is a setting rather
+than a default, and teacher sign-ups wait for approval. The demo seed turns it on
+so the flow can be seen.
+
+**Marks are decimal, and averages are percentages.** Assignments carry different
+maxima, so a raw mean across them would be meaningless.
+
+**Lateness is stamped, not derived.** It is recorded when the work arrives, so
+moving a deadline afterwards cannot make someone retroactively late.
+
+**The development signing key is committed deliberately** so the project runs on
+checkout. It is read only in Development, and the API refuses to start outside
+Development unless `Jwt__Key` is supplied.
+
+**The frontend never decides access.** Its role-based routing exists to explain
+rather than to protect; every decision is made again by the API from the signed
+token.
+
+---
+
+## 21. Known limitations
 
 Stated explicitly rather than left to be discovered.
 
@@ -1573,7 +1619,7 @@ in full alongside the replay.
 
 ---
 
-## 21. Future work
+## 22. Future work
 
 - File attachments backed by real object storage
 - Email or browser-push notification delivery

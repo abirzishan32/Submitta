@@ -30,8 +30,12 @@ public interface ISettingService
     /// <summary>All settings. Admin only.</summary>
     Task<IReadOnlyList<SettingDto>> ListAsync(CancellationToken ct = default);
 
-    /// <summary>Settings marked public — safe for any authenticated user to read.</summary>
-    Task<IReadOnlyList<SettingDto>> ListPublicAsync(CancellationToken ct = default);
+    /// <summary>
+    /// Settings any signed-in user may read, whatever their role — as opposed to
+    /// the full list, which is administrative. Still requires authentication:
+    /// nothing here is served anonymously.
+    /// </summary>
+    Task<IReadOnlyList<SettingDto>> ListSharedAsync(CancellationToken ct = default);
 
     Task<SettingDto> UpdateAsync(string key, UpdateSettingRequest request, CancellationToken ct = default);
 }
@@ -57,7 +61,7 @@ public sealed class SettingService(
                 s.Id, s.Key, s.Value, s.DataType, s.Description, s.IsPublic, s.UpdatedAt))
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<SettingDto>> ListPublicAsync(CancellationToken ct = default) =>
+    public async Task<IReadOnlyList<SettingDto>> ListSharedAsync(CancellationToken ct = default) =>
         await context.ApplicationSettings
             .AsNoTracking()
             .Where(s => s.IsPublic)

@@ -10,9 +10,17 @@ namespace AssignmentSystem.Api.Controllers;
 /// <summary>
 /// Application-level settings.
 ///
-/// Not under the admin controller base, because the public subset is readable by
-/// any signed-in user — the UI needs the institution name and academic year to
-/// render its header.
+/// Not under the admin controller base, because one route is open to any
+/// signed-in user while the rest are administrative.
+///
+/// Every route here requires authentication. The subset marked
+/// <see cref="Domain.Entities.ApplicationSetting.IsPublic"/> is "shared" in the
+/// sense of being readable by any role rather than admins alone — it is not
+/// anonymous, and the route is named accordingly so the distinction cannot be
+/// misread. Settings a signed-out visitor genuinely needs, such as whether
+/// registration is open, are served by
+/// <c>GET /auth/registration-options</c>, which is explicitly
+/// <c>[AllowAnonymous]</c> and returns only those flags.
 /// </summary>
 [ApiController]
 [ApiVersion("1.0")]
@@ -21,11 +29,13 @@ namespace AssignmentSystem.Api.Controllers;
 [Authorize]
 public sealed class SettingsController(ISettingService settings) : ControllerBase
 {
-    /// <summary>Returns settings marked public. Any signed-in user.</summary>
-    [HttpGet("public")]
+    /// <summary>Returns the settings every role may read. Any signed-in user.</summary>
+    /// <response code="401">No valid session; this route is not anonymous.</response>
+    [HttpGet("shared")]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<SettingDto>>), StatusCodes.Status200OK)]
-    public async Task<IActionResult> ListPublic(CancellationToken ct)
-        => Ok(ApiResponse<IReadOnlyList<SettingDto>>.Ok(await settings.ListPublicAsync(ct)));
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> ListShared(CancellationToken ct)
+        => Ok(ApiResponse<IReadOnlyList<SettingDto>>.Ok(await settings.ListSharedAsync(ct)));
 
     /// <summary>Returns every setting. Admin only.</summary>
     [HttpGet]
