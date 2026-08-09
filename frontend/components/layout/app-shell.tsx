@@ -24,7 +24,6 @@ import { NotificationBell } from "./notification-bell";
 import { NotificationProvider } from "@/components/providers/notification-provider";
 import { useTranslation } from "@/components/providers/i18n-provider";
 import { initialsOf } from "@/lib/format";
-import { homeFor } from "@/lib/navigation";
 import type { UserProfile } from "@/lib/api/types";
 
 /**
@@ -51,7 +50,7 @@ export function AppShell({
     <div className="flex min-h-screen bg-background">
       {/* Desktop sidebar */}
       <aside className="hidden w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar lg:flex">
-        <Brand href={homeFor(user.role)} />
+        <Brand href="/" />
         <SidebarNav role={user.role} />
         <SidebarFooter user={user} />
       </aside>
@@ -60,7 +59,7 @@ export function AppShell({
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent side="left" className="w-64 bg-sidebar p-0">
           <SheetTitle className="sr-only">{t.nav.toggleSidebar}</SheetTitle>
-          <Brand href={homeFor(user.role)} />
+          <Brand href="/" />
           <SidebarNav role={user.role} onNavigate={() => setMobileOpen(false)} />
           <SidebarFooter user={user} />
         </SheetContent>
