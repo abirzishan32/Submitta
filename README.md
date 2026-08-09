@@ -11,19 +11,23 @@ classes, subjects and teaching allocations.
 
 ## Contents
 
+**Introduction**
+
+1. [Technology stack](#1-technology-stack)
+2. [Overview](#2-overview)
+
 **Getting started**
-1. [Overview](#1-overview)
-2. [Running with Docker](#2-running-with-docker)
-3. [Running without Docker](#3-running-without-docker)
-   — [Populating the database from the SQL scripts](#3a-populating-the-database-from-the-sql-scripts)
-4. [Configuration reference](#4-configuration-reference)
-5. [Demo credentials](#5-demo-credentials)
+
+3. [Running with Docker](#3-running-with-docker)
+4. [Running without Docker](#4-running-without-docker)
+   — [Populating the database from the SQL scripts](#4a-populating-the-database-from-the-sql-scripts)
+5. [Configuration reference](#5-configuration-reference)
+6. [Demo credentials](#6-demo-credentials)
 
 **Design**
 
-6. [Architecture](#6-architecture)
-7. [Data model](#7-data-model)
-8. [Technology stack](#8-technology-stack)
+7. [Architecture](#7-architecture)
+8. [Data model](#8-data-model)
 9. [Project structure](#9-project-structure)
 
 **Functionality**
@@ -50,7 +54,51 @@ classes, subjects and teaching allocations.
 
 ---
 
-## 1. Overview
+## 1. Technology stack
+
+### 1.1 Backend
+
+| Concern | Choice |
+|---|---|
+| Runtime | .NET 9 |
+| Framework | ASP.NET Core 9 Web API (controllers) |
+| Language | C# 13 |
+| Database | PostgreSQL 14+ (developed and verified against 17) |
+| ORM | EF Core 9 with Npgsql |
+| Authentication | JWT bearer tokens, BCrypt password hashing (work factor 12) |
+| Validation | FluentValidation |
+| Logging | Serilog — console and rolling file |
+| API documentation | Swashbuckle (Swagger UI) with a bearer scheme |
+| API versioning | Asp.Versioning, URL segment (`/api/v1/…`) |
+| Testing | xUnit, FluentAssertions, EF Core in-memory provider |
+
+### 1.2 Frontend
+
+| Concern | Choice |
+|---|---|
+| Framework | Next.js 16 (App Router, React 19) |
+| Language | TypeScript |
+| Styling | Tailwind CSS v4 |
+| Components | shadcn/ui on Base UI |
+| Editor | Tiptap 3 (ProseMirror) |
+| Forms | React Hook Form with Zod validation |
+| Animation | Motion |
+| Smooth scrolling (landing page only) | Lenis |
+| Toasts | Sonner |
+| Icons | Lucide |
+| Fonts | Inter, Noto Sans Bengali, JetBrains Mono; Instrument Serif and Caveat on the landing page |
+
+### 1.3 Infrastructure
+
+| Concern | Choice |
+|---|---|
+| Containerisation | Docker, multi-stage builds, Compose v2 |
+| Migrations | EF Core, applied automatically at startup |
+| Charts | Hand-authored SVG against theme tokens — no charting dependency |
+
+---
+
+## 2. Overview
 
 The system implements three roles with distinct capabilities, enforced entirely
 on the server:
@@ -69,15 +117,34 @@ tests and container configuration. No table needs to be created by hand.
 
 | Method | Prerequisites | Section |
 |---|---|---|
-| **Docker Compose** (recommended) | Docker Desktop | [Section 2](#2-running-with-docker) |
-| **Local toolchain** | .NET 9 SDK, Node.js 20+, PostgreSQL 14+ | [Section 3](#3-running-without-docker) |
+| **Docker Compose** (recommended) | Docker Desktop | [Section 3](#3-running-with-docker) |
+| **Local toolchain** | .NET 9 SDK, Node.js 20+, PostgreSQL 14+ | [Section 4](#4-running-without-docker) |
 
 ---
 
-## 2. Running with Docker
+## 3. Running with Docker
 
 > Run every command from the **repository root** — the directory containing
 > `docker-compose.yml`.
+
+### Platform support
+
+**This route is identical on Windows, macOS and Linux** — the same commands, the
+same ports, the same output. Nothing below needs adapting.
+
+That is by construction, not luck. Everything a host could disagree about is
+sealed inside the containers: the images are Linux, `.gitattributes` normalises
+every text file to LF endings so a Windows checkout cannot produce a file the
+container fails to read, there are no shell scripts to lose their executable bit,
+and `docker-compose.yml` uses no bind mounts and no host paths — only a named
+volume and Docker's internal DNS.
+
+Two Windows-only points, neither of which changes a command:
+
+| | |
+|---|---|
+| **Docker Desktop needs the WSL 2 backend** | This is its default and the installer sets it up. If Docker Desktop starts, this is already satisfied. |
+| **Use `curl.exe`, not `curl`, in Windows PowerShell** | Windows PowerShell 5.1 aliases `curl` to `Invoke-WebRequest`, which rejects `-s`. `curl.exe -s …` works, as does PowerShell 7, `cmd.exe`, Git Bash, or simply opening the URL in a browser. |
 
 ### Step 1 — Confirm Docker is installed and running
 
@@ -157,6 +224,12 @@ Expected: **18** tables and **4** assignments.
 curl -s http://localhost:5062/health
 ```
 
+On **Windows PowerShell** use `curl.exe`, or open the URL in a browser:
+
+```powershell
+curl.exe -s http://localhost:5062/health
+```
+
 Expected:
 
 ```json
@@ -234,6 +307,8 @@ Create a `.env` file in the repository root:
 cp .env.example .env
 ```
 
+On **Windows PowerShell**: `Copy-Item .env.example .env`
+
 Set alternative ports in it:
 
 ```ini
@@ -250,10 +325,36 @@ docker compose up -d
 
 ---
 
-## 3. Running without Docker
+## 4. Running without Docker
 
 > Run every command from the **repository root** unless a step says otherwise.
 > This route needs **two terminals**: one for the API, one for the frontend.
+
+### Platform differences
+
+Unlike the Docker route, **this one does differ between Windows and macOS** —
+not in the application, but in how PostgreSQL is installed and addressed.
+
+| | macOS (Homebrew) | Windows |
+|---|---|---|
+| Installing PostgreSQL | `brew install postgresql@16` | The EDB installer or `winget` |
+| Database superuser | **Your own macOS username**, no password — Homebrew's `initdb` creates it | **`postgres`**, with the password you chose during installation |
+| Consequence | `createdb` and `psql` work with no flags | Every `createdb` / `psql` needs `-U postgres`, and prompts for that password |
+
+That middle row is the one thing most likely to trip a Windows run: `psql -d
+assignment_system` fails there with *"role &lt;your-windows-username&gt; does not
+exist"*, because the role Homebrew creates on a Mac has no Windows equivalent.
+Adding `-U postgres` is the whole fix, and every command below shows it.
+
+Two shell notes for Windows, both about the shell rather than this project:
+
+- **`curl` in Windows PowerShell 5.1** is an alias for `Invoke-WebRequest` and
+  rejects `-s`. Use `curl.exe`, or a browser. PowerShell 7, `cmd.exe` and Git
+  Bash are unaffected.
+- **`&&` does not work in Windows PowerShell 5.1** (it arrived in PowerShell 7).
+  Where a command below chains with `&&`, run the two halves as separate lines.
+
+`dotnet`, `npm` and the application itself behave identically on both.
 
 ### Step 1 — Confirm the prerequisites
 
@@ -271,7 +372,7 @@ psql --version
 
 Required: .NET SDK **9.0+**, Node.js **20+**, PostgreSQL **14+**.
 
-To install them on macOS:
+**macOS** — install with Homebrew:
 
 ```bash
 brew install --cask dotnet-sdk
@@ -281,37 +382,88 @@ brew install --cask dotnet-sdk
 brew install node postgresql@16
 ```
 
+**Windows** — install with winget:
+
+```powershell
+winget install Microsoft.DotNet.SDK.9 OpenJS.NodeJS.LTS PostgreSQL.PostgreSQL.16
+```
+
+The PostgreSQL installer asks you to set a password for the `postgres` user.
+**Note it down — you need it in Step 4.** Close and reopen the terminal
+afterwards so the updated `PATH` takes effect.
+
+> If `psql --version` is still "not recognised" on Windows, PostgreSQL's `bin`
+> directory is not on `PATH`. Either add
+> `C:\Program Files\PostgreSQL\16\bin` to it, or use the "SQL Shell (psql)"
+> shortcut the installer created.
+
 ### Step 2 — Start PostgreSQL
+
+**macOS:**
 
 ```bash
 brew services start postgresql@16
 ```
 
-Confirm it is accepting connections:
+**Windows** — the installer registers PostgreSQL as a Windows service that
+starts automatically, so there is normally nothing to do. To confirm it is
+running:
+
+```powershell
+Get-Service postgresql*
+```
+
+Either way, confirm it is accepting connections:
 
 ```bash
 pg_isready
 ```
 
-Expected: `/tmp:5432 - accepting connections`
+Expected on macOS: `/tmp:5432 - accepting connections`
+Expected on Windows: `localhost:5432 - accepting connections`
 
 ### Step 3 — Create an empty database
+
+**macOS:**
 
 ```bash
 createdb assignment_system
 ```
 
+**Windows** — as the `postgres` superuser, which will prompt for the password
+from Step 1:
+
+```powershell
+createdb -U postgres assignment_system
+```
+
 ### Step 4 — Configure the API
+
+**macOS / Linux:**
 
 ```bash
 cp backend/.env.example backend/.env
 ```
 
+**Windows (PowerShell):**
+
+```powershell
+Copy-Item backend\.env.example backend\.env
+```
+
 Open `backend/.env` and set `ConnectionStrings__DefaultConnection` to match your
 PostgreSQL.
 
-For a Homebrew install on macOS, the superuser is your own macOS username with
-no password:
+**Windows** — the superuser is `postgres`, with the password you set during
+installation. This is also what the example file already contains, so you only
+replace `CHANGE_ME`:
+
+```ini
+ConnectionStrings__DefaultConnection=Host=localhost;Port=5432;Database=assignment_system;Username=postgres;Password=YOUR_PASSWORD
+```
+
+**macOS (Homebrew)** — the superuser is your own macOS username, with no
+password:
 
 ```ini
 ConnectionStrings__DefaultConnection=Host=localhost;Port=5432;Database=assignment_system;Username=YOUR_MACOS_USERNAME
@@ -323,11 +475,8 @@ Print your username with:
 whoami
 ```
 
-For a PostgreSQL with a password set:
-
-```ini
-ConnectionStrings__DefaultConnection=Host=localhost;Port=5432;Database=assignment_system;Username=postgres;Password=YOUR_PASSWORD
-```
+> On Windows `whoami` prints `machine\user`, which is **not** a PostgreSQL role.
+> Use `postgres` there, as above.
 
 ### Step 5 — Start the API — terminal 1
 
@@ -349,8 +498,16 @@ start. Wait for these lines:
 
 ### Step 6 — Confirm the database was populated — terminal 2
 
+**macOS:**
+
 ```bash
 psql -d assignment_system -c "SELECT role, COUNT(*) FROM users GROUP BY role ORDER BY role;"
+```
+
+**Windows** — add `-U postgres`:
+
+```powershell
+psql -U postgres -d assignment_system -c "SELECT role, COUNT(*) FROM users GROUP BY role ORDER BY role;"
 ```
 
 Expected:
@@ -362,6 +519,8 @@ Expected:
  teacher |     2
  student |     3
 ```
+
+Then the table count — again with `-U postgres` on Windows:
 
 ```bash
 psql -d assignment_system -c "SELECT COUNT(*) AS tables FROM information_schema.tables WHERE table_schema='public';"
@@ -375,6 +534,15 @@ Expected: **18**.
 curl -s http://localhost:5062/health
 ```
 
+On **Windows PowerShell** use `curl.exe` — plain `curl` is an alias for
+`Invoke-WebRequest` there and rejects `-s`:
+
+```powershell
+curl.exe -s http://localhost:5062/health
+```
+
+Or just open <http://localhost:5062/health> in a browser, which works everywhere.
+
 Expected:
 
 ```json
@@ -385,6 +553,12 @@ Expected:
 
 ```bash
 cp frontend/.env.example frontend/.env.local
+```
+
+**Windows (PowerShell):**
+
+```powershell
+Copy-Item frontend\.env.example frontend\.env.local
 ```
 
 No edits are needed if the API is on its default port 5062.
@@ -447,22 +621,48 @@ Terminal 2:
 cd frontend && npm run dev
 ```
 
+> **Windows PowerShell 5.1** does not support `&&`. Run the two parts as
+> separate lines:
+>
+> ```powershell
+> cd frontend
+> npm run dev
+> ```
+
 ### Starting over with a fresh database
+
+**macOS:**
 
 ```bash
 dropdb assignment_system && createdb assignment_system
+```
+
+**Windows (PowerShell)** — separate lines, and as the `postgres` superuser:
+
+```powershell
+dropdb -U postgres assignment_system
+createdb -U postgres assignment_system
 ```
 
 Then start the API again; it rebuilds and refills the database.
 
 ---
 
-## 3A. Populating the database from the SQL scripts
+## 4A. Populating the database from the SQL scripts
 
 Optional. Steps 3–5 above already create and fill the database. Use this only to
 build the database from the supplied SQL files instead.
 
 Both files are in `database/`. Run these from the **repository root**.
+
+> **On Windows, add `-U postgres` to every `createdb` and `psql` command in this
+> section**, and enter the password you set when installing PostgreSQL. The
+> commands are written for a Homebrew macOS install, where the superuser is your
+> own username; Windows has no such role. For example:
+>
+> ```powershell
+> psql -U postgres -d assignment_system -f database/schema.sql
+> ```
 
 ### Step 1 — Create an empty database
 
@@ -494,7 +694,7 @@ psql -d assignment_system -c "SELECT role, COUNT(*) FROM users GROUP BY role ORD
 
 Expected: **18** tables, and 1 admin, 2 teachers, 3 students.
 
-Then continue from **Step 4 of Section 3** above. The API detects the schema as
+Then continue from **Step 4 of Section 4** above. The API detects the schema as
 current, applies no migrations, and does not duplicate the loaded rows.
 
 ### Loading the scripts into the Docker database instead
@@ -512,7 +712,7 @@ docker compose exec -T db psql -U submitta -d assignment_system < database/seed.
 ```
 
 ---
-## 4. Configuration reference
+## 5. Configuration reference
 
 Configuration is supplied through environment variables in all cases. No secret
 is committed; every `.env` file is git-ignored and accompanied by a
@@ -524,7 +724,7 @@ is committed; every `.env` file is git-ignored and accompanied by a
 | `backend/.env.example` → `backend/.env` | `dotnet run` | Example only |
 | `frontend/.env.example` → `frontend/.env.local` | `npm run dev` | Example only |
 
-### 4.1 Backend variables
+### 5.1 Backend variables
 
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
@@ -541,16 +741,16 @@ TLS mode is derived from the host: disabled for loopback and single-label
 hostnames such as a Compose service name, required for anything fully qualified.
 Append `?sslmode=…` to override.
 
-### 4.2 Frontend variables
+### 5.2 Frontend variables
 
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
 | `API_BASE_URL` | No | `http://localhost:5062` | API address, read **server-side only** |
 
 Under Compose this is set to `http://api:8080`, the internal service address.
-The browser never uses this value; see [Section 6.3](#63-frontend-request-flow).
+The browser never uses this value; see [Section 7.3](#73-frontend-request-flow).
 
-### 4.3 Compose-only variables
+### 5.3 Compose-only variables
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -564,7 +764,7 @@ it belongs to a database reachable only from inside the Compose network, and
 committing it keeps `docker compose up` free of prerequisites. Override it for
 any deployment that is not a local evaluation.
 
-### 4.4 Running the Docker stack in Production mode
+### 5.4 Running the Docker stack in Production mode
 
 The stack defaults to `ASPNETCORE_ENVIRONMENT=Development`, which publishes
 Swagger and uses the development signing key committed in
@@ -601,12 +801,12 @@ committed.
 
 ---
 
-## 5. Demo credentials
+## 6. Demo credentials
 
 All seeded accounts share the password **`Demo@1234`**. The sign-in page lists
 them and fills the form on click.
 
-### 5.1 Primary accounts
+### 6.1 Primary accounts
 
 | Role | Email | Password |
 |---|---|---|
@@ -614,7 +814,7 @@ them and fills the form on click.
 | **Teacher** | `sarah.ahmed@school.edu` | `Demo@1234` |
 | **Student** | `nadia.islam@school.edu` | `Demo@1234` |
 
-### 5.2 Additional accounts
+### 6.2 Additional accounts
 
 The seed data is constructed to demonstrate the access rules rather than merely
 to populate tables.
@@ -633,9 +833,9 @@ students, an open assignment, one due shortly, and one past its deadline.
 
 ---
 
-## 6. Architecture
+## 7. Architecture
 
-### 6.1 Container topology
+### 7.1 Container topology
 
 ```mermaid
 flowchart LR
@@ -667,7 +867,7 @@ flowchart LR
 Solid arrows are the normal request path. Dotted arrows are published ports for
 inspection and are not used by the application.
 
-### 6.2 Backend — Clean Architecture
+### 7.2 Backend — Clean Architecture
 
 Project references point inward only, so business rules never depend on ASP.NET
 Core or EF Core and can be tested without a host or a database.
@@ -711,7 +911,7 @@ than return a boolean, so a caller that ignores the result still fails closed. A
 fallback authorization policy requires authentication on every endpoint, so an
 action missing `[Authorize]` denies access rather than silently exposing data.
 
-### 6.3 Frontend request flow
+### 7.3 Frontend request flow
 
 Access tokens are never exposed to JavaScript. They are held in `httpOnly`
 cookies; Server Components read them directly, and client components call an
@@ -763,9 +963,9 @@ still refused by the write path.
 
 ---
 
-## 7. Data model
+## 8. Data model
 
-### 7.1 Entity relationships
+### 8.1 Entity relationships
 
 ```mermaid
 erDiagram
@@ -806,7 +1006,7 @@ concurrently.
 **Feedback is a table**, not a column, so a grade → return → regrade cycle
 preserves every round, each snapshotting the marks standing at the time.
 
-### 7.2 Constraints enforced by the database
+### 8.2 Constraints enforced by the database
 
 These are enforced in the schema, not only in the service layer.
 
@@ -819,59 +1019,6 @@ These are enforced in the schema, not only in the service layer.
 | `ck_assignments_published_has_timestamp` | Published work with no publication date |
 | `ix_criterion_scores_submission_criterion_unique` | A criterion scored twice for one submission |
 
-### 7.3 Auditing and soft deletion
-
-Every table carries `created_at`, `updated_at`, `created_by`, `modified_by` and
-soft-delete columns, populated by a `SaveChanges` interceptor and filtered by a
-global query filter. **No `Remove()` call in the codebase destroys a row** —
-deletes are rewritten as soft deletes, so a graded submission cannot be lost.
-
-Primary keys are UUID v7 (time-ordered), so inserts remain at the right edge of
-the index rather than fragmenting it as random v4 values do.
-
----
-
-## 8. Technology stack
-
-### 8.1 Backend
-
-| Concern | Choice |
-|---|---|
-| Runtime | .NET 9 |
-| Framework | ASP.NET Core 9 Web API (controllers) |
-| Language | C# 13 |
-| Database | PostgreSQL 14+ (developed and verified against 17) |
-| ORM | EF Core 9 with Npgsql |
-| Authentication | JWT bearer tokens, BCrypt password hashing (work factor 12) |
-| Validation | FluentValidation |
-| Logging | Serilog — console and rolling file |
-| API documentation | Swashbuckle (Swagger UI) with a bearer scheme |
-| API versioning | Asp.Versioning, URL segment (`/api/v1/…`) |
-| Testing | xUnit, FluentAssertions, EF Core in-memory provider |
-
-### 8.2 Frontend
-
-| Concern | Choice |
-|---|---|
-| Framework | Next.js 16 (App Router, React 19) |
-| Language | TypeScript |
-| Styling | Tailwind CSS v4 |
-| Components | shadcn/ui on Base UI |
-| Editor | Tiptap 3 (ProseMirror) |
-| Forms | React Hook Form with Zod validation |
-| Animation | Motion |
-| Smooth scrolling (landing page only) | Lenis |
-| Toasts | Sonner |
-| Icons | Lucide |
-| Fonts | Inter, Noto Sans Bengali, JetBrains Mono; Instrument Serif and Caveat on the landing page |
-
-### 8.3 Infrastructure
-
-| Concern | Choice |
-|---|---|
-| Containerisation | Docker, multi-stage builds, Compose v2 |
-| Migrations | EF Core, applied automatically at startup |
-| Charts | Hand-authored SVG against theme tokens — no charting dependency |
 
 ---
 
@@ -1237,6 +1384,9 @@ Create an empty database. That is the only manual step.
 createdb assignment_system
 ```
 
+> **On Windows:** `createdb -U postgres assignment_system` — see
+> [Section 4](#4-running-without-docker).
+
 ```bash
 dotnet run --project backend/src/AssignmentSystem.Api
 ```
@@ -1251,6 +1401,9 @@ demonstration dataset.
 ### 15.3 Route 3 — Apply the SQL scripts directly
 
 For provisioning or inspecting the database without running the application.
+
+> **On Windows, add `-U postgres`** to each command below — see
+> [Section 4](#4-running-without-docker) for why.
 
 ```bash
 createdb assignment_system
@@ -1365,6 +1518,14 @@ Locally:
 ```bash
 dropdb assignment_system && createdb assignment_system
 ```
+
+> **On Windows PowerShell**, `&&` is unavailable — run the two as separate
+> lines, with `-U postgres`:
+>
+> ```powershell
+> dropdb -U postgres assignment_system
+> createdb -U postgres assignment_system
+> ```
 
 ---
 
@@ -1510,7 +1671,7 @@ DB_PORT=5533
 
 **The API container exits immediately in Production mode.**
 `Jwt__Key` is missing. The API refuses to start outside Development without a
-signing key — see [Section 4.4](#44-running-the-docker-stack-in-production-mode).
+signing key — see [Section 5.4](#54-running-the-docker-stack-in-production-mode).
 
 **Stale data after a schema change.**
 The database volume persists across `docker compose down`. Discard it:
