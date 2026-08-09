@@ -129,22 +129,23 @@ tests and container configuration. No table needs to be created by hand.
 
 ### Platform support
 
-**This route is identical on Windows, macOS and Linux** — the same commands, the
-same ports, the same output. Nothing below needs adapting.
+This route is identical on Windows, macOS and Linux. The commands, ports and
+expected output are the same on all three, and no step requires adaptation.
 
-That is by construction, not luck. Everything a host could disagree about is
-sealed inside the containers: the images are Linux, `.gitattributes` normalises
-every text file to LF endings so a Windows checkout cannot produce a file the
-container fails to read, there are no shell scripts to lose their executable bit,
-and `docker-compose.yml` uses no bind mounts and no host paths — only a named
-volume and Docker's internal DNS.
+All platform-dependent behaviour is contained within the images:
 
-Two Windows-only points, neither of which changes a command:
-
-| | |
+| Consideration | Handling |
 |---|---|
-| **Docker Desktop needs the WSL 2 backend** | This is its default and the installer sets it up. If Docker Desktop starts, this is already satisfied. |
-| **Use `curl.exe`, not `curl`, in Windows PowerShell** | Windows PowerShell 5.1 aliases `curl` to `Invoke-WebRequest`, which rejects `-s`. `curl.exe -s …` works, as does PowerShell 7, `cmd.exe`, Git Bash, or simply opening the URL in a browser. |
+| Line endings | `.gitattributes` normalises all text files to LF, so a Windows checkout produces the same file contents as any other. |
+| Executable permissions | The project contains no shell scripts. Both images use exec-form `ENTRYPOINT`/`CMD` directives. |
+| Filesystem paths | `docker-compose.yml` declares no bind mounts and no host paths. Persistence uses a named volume; inter-service addressing uses Docker's internal DNS. |
+
+Two Windows-specific notes apply. Neither changes any command:
+
+| Note | Detail |
+|---|---|
+| Docker Desktop requires the WSL 2 backend | This is the default and is configured by the installer. If Docker Desktop starts successfully, this requirement is already met. |
+| Use `curl.exe` rather than `curl` in Windows PowerShell | Windows PowerShell 5.1 aliases `curl` to `Invoke-WebRequest`, which does not accept `-s`. `curl.exe -s …` works correctly, as do PowerShell 7, `cmd.exe` and Git Bash. The URL may also be opened in a browser. |
 
 ### Step 1 — Confirm Docker is installed and running
 
@@ -332,29 +333,29 @@ docker compose up -d
 
 ### Platform differences
 
-Unlike the Docker route, **this one does differ between Windows and macOS** —
-not in the application, but in how PostgreSQL is installed and addressed.
+Unlike the Docker route, this route differs between Windows and macOS. The
+differences concern the installation and addressing of PostgreSQL, not the
+application itself. The .NET SDK, Node.js and the application behave identically
+on both platforms.
 
 | | macOS (Homebrew) | Windows |
 |---|---|---|
-| Installing PostgreSQL | `brew install postgresql@16` | The EDB installer or `winget` |
-| Database superuser | **Your own macOS username**, no password — Homebrew's `initdb` creates it | **`postgres`**, with the password you chose during installation |
-| Consequence | `createdb` and `psql` work with no flags | Every `createdb` / `psql` needs `-U postgres`, and prompts for that password |
+| PostgreSQL installation | `brew install postgresql@16` | EDB installer or `winget` |
+| Database superuser | The current macOS username, created by Homebrew's `initdb`, with no password | `postgres`, with the password set during installation |
+| Effect on commands | `createdb` and `psql` require no additional flags | `createdb` and `psql` require `-U postgres` and prompt for the password |
 
-That middle row is the one thing most likely to trip a Windows run: `psql -d
-assignment_system` fails there with *"role &lt;your-windows-username&gt; does not
-exist"*, because the role Homebrew creates on a Mac has no Windows equivalent.
-Adding `-U postgres` is the whole fix, and every command below shows it.
+The superuser difference is the most common cause of failure on Windows. A
+command such as `psql -d assignment_system` returns *"role
+&lt;windows-username&gt; does not exist"*, because the role Homebrew creates on
+macOS has no Windows equivalent. Supplying `-U postgres` resolves this, and each
+affected command below is shown in both forms.
 
-Two shell notes for Windows, both about the shell rather than this project:
+Two further notes apply to the Windows shell rather than to this project:
 
-- **`curl` in Windows PowerShell 5.1** is an alias for `Invoke-WebRequest` and
-  rejects `-s`. Use `curl.exe`, or a browser. PowerShell 7, `cmd.exe` and Git
-  Bash are unaffected.
-- **`&&` does not work in Windows PowerShell 5.1** (it arrived in PowerShell 7).
-  Where a command below chains with `&&`, run the two halves as separate lines.
-
-`dotnet`, `npm` and the application itself behave identically on both.
+| Note | Detail |
+|---|---|
+| `curl` in Windows PowerShell 5.1 | Aliased to `Invoke-WebRequest`, which does not accept `-s`. Use `curl.exe` or a browser. PowerShell 7, `cmd.exe` and Git Bash are unaffected. |
+| `&&` in Windows PowerShell 5.1 | Not supported; the operator was introduced in PowerShell 7. Where a command below uses `&&`, run each part on a separate line. |
 
 ### Step 1 — Confirm the prerequisites
 
@@ -388,14 +389,14 @@ brew install node postgresql@16
 winget install Microsoft.DotNet.SDK.9 OpenJS.NodeJS.LTS PostgreSQL.PostgreSQL.16
 ```
 
-The PostgreSQL installer asks you to set a password for the `postgres` user.
-**Note it down — you need it in Step 4.** Close and reopen the terminal
-afterwards so the updated `PATH` takes effect.
+The PostgreSQL installer prompts for a password for the `postgres` user. This
+password is required in Step 4 and should be recorded. Close and reopen the
+terminal after installation so that the updated `PATH` takes effect.
 
-> If `psql --version` is still "not recognised" on Windows, PostgreSQL's `bin`
-> directory is not on `PATH`. Either add
-> `C:\Program Files\PostgreSQL\16\bin` to it, or use the "SQL Shell (psql)"
-> shortcut the installer created.
+> If `psql --version` is not recognised after reopening the terminal, the
+> PostgreSQL `bin` directory is not on `PATH`. Either add
+> `C:\Program Files\PostgreSQL\16\bin` to `PATH`, or use the "SQL Shell
+> (psql)" shortcut created by the installer.
 
 ### Step 2 — Start PostgreSQL
 
@@ -405,9 +406,9 @@ afterwards so the updated `PATH` takes effect.
 brew services start postgresql@16
 ```
 
-**Windows** — the installer registers PostgreSQL as a Windows service that
-starts automatically, so there is normally nothing to do. To confirm it is
-running:
+**Windows** — the installer registers PostgreSQL as a Windows service
+configured to start automatically, so no action is normally required. To confirm
+the service is running:
 
 ```powershell
 Get-Service postgresql*
@@ -430,8 +431,8 @@ Expected on Windows: `localhost:5432 - accepting connections`
 createdb assignment_system
 ```
 
-**Windows** — as the `postgres` superuser, which will prompt for the password
-from Step 1:
+**Windows** — run as the `postgres` superuser. The command prompts for the
+password set in Step 1:
 
 ```powershell
 createdb -U postgres assignment_system
@@ -451,32 +452,32 @@ cp backend/.env.example backend/.env
 Copy-Item backend\.env.example backend\.env
 ```
 
-Open `backend/.env` and set `ConnectionStrings__DefaultConnection` to match your
-PostgreSQL.
+Open `backend/.env` and set `ConnectionStrings__DefaultConnection` to match the
+local PostgreSQL installation.
 
-**Windows** — the superuser is `postgres`, with the password you set during
-installation. This is also what the example file already contains, so you only
-replace `CHANGE_ME`:
+**Windows** — the superuser is `postgres`, with the password set during
+installation. The example file already specifies this user, so only `CHANGE_ME`
+needs to be replaced:
 
 ```ini
 ConnectionStrings__DefaultConnection=Host=localhost;Port=5432;Database=assignment_system;Username=postgres;Password=YOUR_PASSWORD
 ```
 
-**macOS (Homebrew)** — the superuser is your own macOS username, with no
+**macOS (Homebrew)** — the superuser is the current macOS username, with no
 password:
 
 ```ini
 ConnectionStrings__DefaultConnection=Host=localhost;Port=5432;Database=assignment_system;Username=YOUR_MACOS_USERNAME
 ```
 
-Print your username with:
+The username can be printed with:
 
 ```bash
 whoami
 ```
 
-> On Windows `whoami` prints `machine\user`, which is **not** a PostgreSQL role.
-> Use `postgres` there, as above.
+> On Windows, `whoami` prints `machine\user`, which is not a PostgreSQL role.
+> Use `postgres` on that platform, as shown above.
 
 ### Step 5 — Start the API — terminal 1
 
@@ -534,14 +535,14 @@ Expected: **18**.
 curl -s http://localhost:5062/health
 ```
 
-On **Windows PowerShell** use `curl.exe` — plain `curl` is an alias for
-`Invoke-WebRequest` there and rejects `-s`:
+On **Windows PowerShell**, use `curl.exe`. The unqualified `curl` is an alias
+for `Invoke-WebRequest`, which does not accept `-s`:
 
 ```powershell
 curl.exe -s http://localhost:5062/health
 ```
 
-Or just open <http://localhost:5062/health> in a browser, which works everywhere.
+Alternatively, open <http://localhost:5062/health> in a browser.
 
 Expected:
 
@@ -621,7 +622,7 @@ Terminal 2:
 cd frontend && npm run dev
 ```
 
-> **Windows PowerShell 5.1** does not support `&&`. Run the two parts as
+> **Windows PowerShell 5.1** does not support `&&`. Run the two commands on
 > separate lines:
 >
 > ```powershell
@@ -637,7 +638,8 @@ cd frontend && npm run dev
 dropdb assignment_system && createdb assignment_system
 ```
 
-**Windows (PowerShell)** — separate lines, and as the `postgres` superuser:
+**Windows (PowerShell)** — run on separate lines, as the `postgres`
+superuser:
 
 ```powershell
 dropdb -U postgres assignment_system
@@ -655,10 +657,11 @@ build the database from the supplied SQL files instead.
 
 Both files are in `database/`. Run these from the **repository root**.
 
-> **On Windows, add `-U postgres` to every `createdb` and `psql` command in this
-> section**, and enter the password you set when installing PostgreSQL. The
-> commands are written for a Homebrew macOS install, where the superuser is your
-> own username; Windows has no such role. For example:
+> **On Windows, add `-U postgres` to every `createdb` and `psql` command in
+> this section**, supplying the password set during PostgreSQL installation. The
+> commands below are written for a Homebrew macOS installation, in which the
+> superuser is the current username; Windows has no equivalent role. For
+> example:
 >
 > ```powershell
 > psql -U postgres -d assignment_system -f database/schema.sql
@@ -1519,8 +1522,8 @@ Locally:
 dropdb assignment_system && createdb assignment_system
 ```
 
-> **On Windows PowerShell**, `&&` is unavailable — run the two as separate
-> lines, with `-U postgres`:
+> **On Windows PowerShell**, `&&` is unavailable. Run the two commands on
+> separate lines, as the `postgres` superuser:
 >
 > ```powershell
 > dropdb -U postgres assignment_system
