@@ -11,11 +11,16 @@ import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { homeFor } from "@/lib/navigation";
 import type { UserProfile } from "@/lib/api/types";
 
+/**
+ * Anchors on the landing page. These must match the section ids in
+ * `components/landing/sections.tsx` — a link here with no section to land on is
+ * a dead link, which is what happened when the old page was replaced.
+ */
 const LINKS = [
   { href: "#features", label: "Features" },
   { href: "#how-it-works", label: "How it works" },
-  { href: "#security", label: "Security" },
-  { href: "#stack", label: "Built with" },
+  { href: "#product", label: "The interface" },
+  { href: "#start", label: "Get the demo" },
 ] as const;
 
 /**

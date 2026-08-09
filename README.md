@@ -860,9 +860,10 @@ the index rather than fragmenting it as random v4 values do.
 | Editor | Tiptap 3 (ProseMirror) |
 | Forms | React Hook Form with Zod validation |
 | Animation | Motion |
+| Smooth scrolling (landing page only) | Lenis |
 | Toasts | Sonner |
 | Icons | Lucide |
-| Fonts | Inter, Noto Sans Bengali, JetBrains Mono |
+| Fonts | Inter, Noto Sans Bengali, JetBrains Mono; Instrument Serif and Caveat on the landing page |
 
 ### 8.3 Infrastructure
 
