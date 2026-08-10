@@ -30,8 +30,11 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files
 .env*
+# The template is committed on purpose: the README instructs the reader to copy
+# it, so a clone without it breaks setup. It contains placeholders only.
+!.env.example
 
 # vercel
 .vercel
